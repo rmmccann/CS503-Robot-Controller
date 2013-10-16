@@ -1,42 +1,31 @@
 #include <AFMotor.h>
 
-AF_DCMotor motor1(1);
-AF_DCMotor motor2(4);
-
-float radius = 0;
+AF_DCMotor motorR(2);
+AF_DCMotor motorL(1);
+//AF_DCMotor motor2(4);
+int count;
 
 void setup()
 {
-	motor1.setSpeed(100);
-	motor2.setSpeed(100);
-	motor1.run(RELEASE);
-	motor2.run(RELEASE);
+	Serial.begin(9600);
+	motorR.setSpeed(0);
+	motorR.run(RELEASE);	//start not moving
+	motorL.setSpeed(0);
+	motorL.run(RELEASE);
+	Serial.println("Setup complete");
 }
 
 void loop()
 {
-	if(radius == 0)
-	{
-		motor1.setSpeed(100);
-		motor1.run(FORWARD);
-
-		motor2.setSpeed(100);
-		motor2.run(BACKWARD);
-	}
-
+	//motorL.setSpeed(50);
+	//motorL.run(FORWARD);
 	/*
-		radius == 1/2 width
-		r = -l
-		r>0
-		l<0
-
-		radius == width
-		r>0
-		l=0
-
-		radius > width
-		r>0
-		l>0
-
+	motorR.run(FORWARD);
+	for (count=0; count<256; count+=20){
+	motorR.setSpeed(count);
+	delay(1000);
+	}
 	*/
+	motorR.setSpeed(255);
+	motorR.run(FORWARD);
 }
