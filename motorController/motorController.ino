@@ -21,6 +21,9 @@ int minFrontDist = 6;
 AF_DCMotor motorR(2, MOTOR12_64KHZ);
 AF_DCMotor motorL(1);
 
+long curSpaceRight;
+long curSpaceFront;
+
 void setup()
 {
 	Serial.begin(9600);
@@ -34,6 +37,36 @@ void setup()
 
 void loop()
 {
+	//First take Ping sensor measurements
+	long duration, duration2;
+
+	//right ping
+	pinMode(rightPing, OUTPUT);
+	digitalWrite(rightPing, LOW);
+	delayMicroseconds(2);
+	digitalWrite(rightPing, HIGH);
+	delayMicroseconds(5);
+	digitalWrite(rightPing, LOW);
+
+	pinMode(rightPing, INPUT);
+	duration = pulseIn(rightPing, HIGH);
+
+	curSpaceRight = microsecondsToInches(duration);
+
+	//front ping
+	pinMode(frontPing, OUTPUT);
+	digitalWrite(frontPing, LOW);
+	delayMicroseconds(2);
+	digitalWrite(frontPing, HIGH);
+	delayMicroseconds(5);
+	digitalWrite(frontPing, LOW);
+
+	pinMode(frontPing, INPUT);
+	duration2 = pulseIn(frontPing, HIGH);
+
+	curSpaceFront = microsecondsToInches(duration2);
+
+	//Then call the approapriate code for the current state
 	switch(STATE)
 	{
 		case 0:
@@ -60,39 +93,12 @@ void movingState()
 	motorL.run(FORWARD);
 	motorR.run(FORWARD);
 
-	long duration, curSpaceRight, cm, duration2, curSpaceFront, cm2;
-
-	//right ping
-	pinMode(rightPing, OUTPUT);
-	digitalWrite(rightPing, LOW);
-	delayMicroseconds(2);
-	digitalWrite(rightPing, HIGH);
-	delayMicroseconds(5);
-	digitalWrite(rightPing, LOW);
-
-	pinMode(rightPing, INPUT);
-	duration = pulseIn(rightPing, HIGH);
-
-	//front ping
-	pinMode(frontPing, OUTPUT);
-	digitalWrite(frontPing, LOW);
-	delayMicroseconds(2);
-	digitalWrite(frontPing, HIGH);
-	delayMicroseconds(5);
-	digitalWrite(frontPing, LOW);
-
-	pinMode(frontPing, INPUT);
-	duration2 = pulseIn(frontPing, HIGH);
-
-	curSpaceFront = microsecondsToInches(duration2);
-	cm2 = microsecondsToCentimeters(duration2);
-
 	//Correct speed if distance is too close/far
-	if(curSpaceRight< followDistance-tolerance)
+	if(curSpaceRight< minFollowDist)
 	{
 		motorL.setSpeed(0);
 	}
-	else if(curSpaceRight> followDistance+tolerance)
+	else if(curSpaceRight > maxFollowDist)
 	{
 		motorR.setSpeed(0);
 	}
@@ -117,25 +123,27 @@ void movingState()
 }
 void turningLeft()
 {
-	/*
-	float speed;
-	if front_dist<c then
-		rightmotor = speed; //forward
-		leftmotor= -speed //backward
-	if front_dist>c //TODO
-		STATE=MOVING;
-	*/
+	if(curSpaceFront < minFrontDist)
+	{
+		motorR.setSpeed(speed);
+		motorL.setSpeed(-speed);
+	}
+	if(curSpaceFront > minFrontDist && curSpaceRight < maxFollowDist)
+	{
+		STATE = MOVING;
+	}
 }
 void turningRight()
 {
-	/*
-	float speed;
-	if right_dist>c then
-		leftmotor = speed; //forward
-		rightmotor= -speed //backward
-	if right_dist<b
-		STATE=MOVING;
-	*/
+	if(curSpaceRight > maxFollowDist)
+	{
+		motorL.setSpeed(speed);
+		motorR.setSpeed(-speed);
+	}
+	if(curSpaceRight < followDistance)
+	{
+		STATE = MOVING;
+	}
 }
 void findWall()
 {
