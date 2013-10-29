@@ -4,6 +4,8 @@ The Wrecking Bot ™
 */
 
 #include <AFMotor.h>
+#include <PCM.h>
+#include "sounddata.h"
 
 int STATE = 0;
 
@@ -37,6 +39,9 @@ long curSpaceFront;
 void setup()
 {
 	Serial.begin(9600);
+
+	//startPlayback(sound_data, sizeof(sound_data));
+
 	motorR.setSpeed(0);
 	motorR.run(RELEASE);
 	motorL.setSpeed(0);
@@ -55,7 +60,9 @@ void loop()
 	curSpaceFront = microsecondsToCentimeters(frontPingDuration);
 
 	//debug
-	Serial.print("Right Ping: ");
+	Serial.print("Ping front: ");
+	Serial.print(curSpaceFront);
+	Serial.print(", Ping right: ");
 	Serial.println(curSpaceRight);
 
 	//Then call the approapriate code for the current state
@@ -88,6 +95,7 @@ long ping(int pingPin)
 	return pulseIn(pingPin, HIGH);
 }
 
+int adjust = 0;
 void movingState()
 {
 	int speed_diff = 20;
@@ -99,36 +107,46 @@ void movingState()
 	motorR.run(FORWARD);
 
 	//Correct speed if distance is too close/far
-	if(curSpaceRight < minFollowDist)
-	{
-		motorL.setSpeed(0);
-		// motorL.setSpeed(15);
-		// STATE = TURNING_LEFT;
-	}
-	else if(curSpaceRight > maxFollowDist)
-	{
-		motorR.setSpeed(0);
-		// motorR.setSpeed(15);
-		// STATE = TURNING_RIGHT;
-	}
+//	if(curSpaceRight < minFollowDist)
+//	{
+//		motorL.setSpeed(0);
+//		// motorL.setSpeed(15);
+//		// STATE = TURNING_LEFT;
+//	}
+//	else if(curSpaceRight > maxFollowDist)
+//	{
+//		motorR.setSpeed(0);
+//		// motorR.setSpeed(15);
+//		// STATE = TURNING_RIGHT;
+//	}
 
-	else if(curSpaceRight < minGoodRange)
+        if(curSpaceRight < maxGoodRange && curSpaceRight > minGoodRange)
+        {
+                if(adjust <= 0) adjust = 0;
+                adjust-=3;
+//                adjust = 0;
+        }
+
+	else if(curSpaceRight < minFollowDist+6)
 	{
-		motorL.setSpeed(speed-small_speed_diff);
+		//motorL.setSpeed(speed-small_speed_diff);
+                motorL.setSpeed(speed-(adjust+=20));
+                  
 	}
 	else if(curSpaceRight > maxGoodRange)
 	{
-		motorR.setSpeed(speed-small_speed_diff);
+		//motorR.setSpeed(speed-small_speed_diff);
+		motorR.setSpeed(speed-(adjust+=3));
 	}
 	
-	else if(curSpaceRight < minFollowDist)
-	{
-		motorL.setSpeed(speed-speed_diff);
-	}
-	else if(curSpaceRight > maxFollowDist)
-	{
-		motorR.setSpeed(speed-speed_diff);
-	}
+//	else if(curSpaceRight < minFollowDist)
+//	{
+//		motorL.setSpeed(speed-speed_diff);
+//	}
+//	else if(curSpaceRight > maxFollowDist)
+//	{
+//		motorR.setSpeed(speed-speed_diff);
+//	}
 
 	//Check if we need to turn and change the state
 	if(curSpaceFront < minFrontDist && curSpaceRight > minFollowDist && curSpaceRight < maxFollowDist)
@@ -156,6 +174,7 @@ void turningLeft()
 }
 void turningRight()
 {
+  /*
 		//Pre-programed turning routine
 		motorL.setSpeed(speed);
 		motorR.setSpeed(speed/4);
@@ -168,7 +187,24 @@ void turningRight()
 		motorR.run(FORWARD);
 		delay(1000); //move forward for 1sec (so the ping will be able to detect the wall)
 		STATE = MOVING;
+*/
 
+                //Turn in place
+		
+		motorL.setSpeed(speed);
+		motorR.setSpeed(speed);
+		motorL.run(FORWARD);
+		motorR.run(FORWARD);
+		delay(800);
+		motorL.run(FORWARD);
+		motorR.run(BACKWARD);
+		delay(750);
+		motorL.run(FORWARD);
+		motorR.run(FORWARD);
+		delay(900);
+		STATE = MOVING;
+		
+//STATE = MOVING;
 /*
 	if(curSpaceRight > maxFollowDist+20)
 	{
