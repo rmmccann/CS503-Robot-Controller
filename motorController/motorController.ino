@@ -22,7 +22,7 @@ float speed = 80;
 #define SIDEPING A1
 #define PINGTIME 75  //ms between ping reading updates  //at 300ms and L/R speeds of 90/99, will go at most 3cm closer to wall in that time assuming it stays within 45deg of wall
 
-AF_DCMotor motorL(1);
+AF_DCMotor motorL(1);  //TODO just testing different frequencies; will be quieter, but what is the effcect on performance?
 AF_DCMotor motorR(2);
 
 int speedLstraight = 90;  //approximate values to go straight
@@ -92,6 +92,16 @@ void loop()
      //Serial.println("ping");
    }
    
+   if(mmFrontCur < 100) {
+    motorL.run(BACKWARD);
+    motorR.run(BACKWARD);
+    motorL.setSpeed(100);
+    motorR.setSpeed(100);
+    delay(50);
+    motorL.setSpeed(0);
+    motorR.setSpeed(0);
+    while(1){}
+   }
 
      //if MOVING and diff between curPing and lastPing is above certain amount (means that suddenly sees longer range); most likely right turn
      /*
@@ -248,7 +258,10 @@ void turningRight()
     unsigned long edgeLastTime;  //last time since we lost the edge; if it's been longer than X ms since last losing edge, assume wall found, go back to MOVING to adjust parallelsim and continue
     unsigned long edgeCurTime;
     
-    //to see how it functions, just full stop with reverse torque to minimize drift from momentum 
+    //move forward a little further to clear it, then stop
+    motorL.setSpeed(speedLstraight);  //realign motors to go straight before delay, otherwise speedL and speedR could have adjustments applied to them, and delaying will make them turn wrong
+    motorR.setSpeed(speedRstraight);
+    delay(750);  //increase this value until robot clears edge enough before stopping
     motorL.run(BACKWARD);
     motorR.run(BACKWARD);
     motorL.setSpeed(100);
@@ -257,57 +270,43 @@ void turningRight()
     motorL.run(FORWARD);
     motorR.run(FORWARD);
     
-    motorL.setSpeed(60);  //go a little further to make sure clear of wall edge while turning right, adjust as necessary
-    motorR.setSpeed(60);
-    delay(50);
-    
     motorL.setSpeed(0);
     motorR.setSpeed(0);
-    delay(3000);  //long delay to start just to visualize what it's doing, decrease to optimize speed
+    delay(250);  //long delay to start just to visualize what it's doing, decrease to optimize speed
     
     
-    //TODO if it sees wall too close, give longer movement forward before checking again so it's further radius from wall
+    //90 right turn
+    motorL.setSpeed(speedLstraight);
+    motorR.run(BACKWARD);
+    motorR.setSpeed(speedRstraight);
+    delay(700);
+    motorL.run(BACKWARD);
+    motorR.run(FORWARD);
+    motorL.setSpeed(100);
+    motorR.setSpeed(100);
+    delay(50);
+    motorL.run(FORWARD);
+    motorL.setSpeed(0);
+    motorR.setSpeed(0);
+   
+    delay(250);  //decrease to optimize
     
-    edgeCurTime = millis();
-    edgeLastTime = edgeCurTime;
     
-    while(!wallFound){  //keep doing edge finding/moving forward until certain time has passed since last lost edge
-      while(!edgeFound){  //while we haven't found the edge yet
-         motorL.setSpeed(speedLstraight);
-         motorR.run(BACKWARD);
-         motorR.setSpeed(speedRstraight);
-         delay(25);
-         motorL.setSpeed(0);
-         motorR.run(FORWARD);
-         motorR.setSpeed(0);
-         delay(50);
-         updatePings();
-         if(mmSideCur < 250){  //shouldn't be any other walls within ~25cm of side of robot besides the turn it's tracking; change as needed
-           edgeFound = true;
-         }
-      }
-      updatePings();
-      updatePings();
-      while( !((mmSideCur - mmSideLast) > 100) && (edgeCurTime - edgeLastTime < 1000)){  //while not the case that it sees discontinuity (meaning lost edge) AND that time hasn't expired, keep going forward in here
-        motorL.setSpeed(60);
-        motorR.setSpeed(67); //guessing at matched value for straightness, doesn't need to be perfect
+    //now while loop just going straight until wall detected, then go to moving state
+    while(!wallFound){
+       //while wall not found, move forward. Find wall-->go to moving state; hopefully updates fast enough to catch the edge then loses it to go into turning_right again
+      //if it doesn't see a lost edge, then it's just a 90deg turn and MOVING can take over
+        motorL.setSpeed(speedLstraight);
+        motorR.setSpeed(speedRstraight);
         updatePings();
-        //lastTime = curTime;
-        edgeCurTime = millis();
-      }
-      if(edgeCurTime - edgeLastTime < 1000) {
-        //time expired, assume straight wall ahead, set MOVING state and return to main proram loop
-        STATE = MOVING;
-        return;  //TODO make sure no cleanup/other change of variables needs to take place before leaving function (unlikely)
-      }
-      else{
-        edgeLastTime = millis();  //last time we lost edge was now
-        edgeFound = false;  //lost the edge, let the wallFound bool make it go back into !edgeFound loop
-      }
-         //now move forward until either lose the edge or time expires
-           //if lose edge, update time, let it go back to edge finding while loop, change edgeFound = false
-           //if time expires, set state to MOVING and return from turningRight() function
+        if(mmSideCur < 300) {  //found wall, go into MOVING state, return
+          updatePings();
+          STATE = MOVING;
+          delay(400);
+          return;
+        }
     }
+    
 }
 void findWall()
 {
@@ -334,7 +333,7 @@ int sideMM()
 
 ////////////////////
 /*
-minspeed L: 50
+ minspeed L: 50
  minspeed R: 54
  */
 void setLSpeed(float rpm)
