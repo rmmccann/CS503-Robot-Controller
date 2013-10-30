@@ -46,7 +46,7 @@ int frontDiff = 0;  //calculated immediately following ping readings for moving 
 int sideDiff = 0;
 
 const int maxAdjust = 80;  //maximum adjustment for re-aligning robot; turns quickly enough and won't stall
-const int minAdjust = 5;
+const int minAdjust = 10;
 //idea is that the bigger diff in side pings, the more of an adjustment needs to be made, and vice versa
 int adjustL;  //speed adjustment; function of diff between side ping readings
 int adjustR;
@@ -57,6 +57,12 @@ void setup()
   Serial.begin(9600);
 
   //startPlayback(sound_data, sizeof(sound_data));
+
+  pinMode(A4, OUTPUT);
+  pinMode(A5, OUTPUT);
+  digitalWrite(A4, LOW);
+  digitalWrite(A5, LOW);
+  
 
   motorR.setSpeed(0);
   motorR.run(RELEASE);
@@ -86,7 +92,9 @@ void loop()
      //Serial.println("ping");
    }
    
+
      //if MOVING and diff between curPing and lastPing is above certain amount (means that suddenly sees longer range); most likely right turn
+     /*
      if((STATE == MOVING && (mmSideCur - mmSideLast) > 100) || (LASTSTATE == TURNING_RIGHT && mmSideCur > 250 && mmSideLast > 250)) {  //either currently moving and see jump in dist, or in middle of right turn looking for wall again
        STATE = TURNING_RIGHT;
      }
@@ -96,19 +104,27 @@ void loop()
        //if it's actually the straight wall again, will just stay in MOVING state anyway
        STATE = MOVING;
      }
-     
-     
+     */
+     LASTSTATE = STATE;  //keep history of state to make better judgements
+     if((STATE == MOVING) && (mmSideCur-mmSideLast > 100)){  //if it's moving and it sees a sudden increase in distance (10cm discontinuity) then assume needs to turn right
+       STATE = TURNING_RIGHT;
+     }
+     else {
+        STATE = MOVING;
+     }
    	//Then call the appropriate code for the current state
-   LASTSTATE = STATE;  //keep history of state to make better judgements
+   
    switch(STATE)
    	{
    		case MOVING:
+                        digitalWrite(A5, LOW);  //turn off to indicate MOVING state
    			movingState();
    			break;
    		case TURNING_LEFT:
    			turningLeft();
    			break;
    		case TURNING_RIGHT:
+                        digitalWrite(A5, HIGH);  //indicate that we're in the turning right state
    			turningRight();
    			break;
    		default:
@@ -207,15 +223,72 @@ void turningRight()
  //in this function, should just turn slowly until pings find right edge again, then go to MOVING so that it goes forward a bit, loses it, and comes back
  //to this function again until a straight wall is found and it just stays in MOVING state
  //hypothetically, this method will give accurate 90deg and 180deg turns without any special additional code since it progressively takes the turn
-    motorL.setSpeed(60);  //small turns right with pivot (try turn in place too if this doesn't work well enough
-    motorR.setSpeed(100);
+    boolean edgeFound = false;
+    boolean wallFound = false;
+    
+    unsigned long edgeLastTime;  //last time since we lost the edge; if it's been longer than X ms since last losing edge, assume wall found, go back to MOVING to adjust parallelsim and continue
+    unsigned long edgeCurTime;
+    
+    //to see how it functions, just full stop with reverse torque to minimize drift from momentum 
+    motorL.run(BACKWARD);
     motorR.run(BACKWARD);
+    motorL.setSpeed(100);
+    motorR.setSpeed(100);
     delay(50);
-    motorL.setSpeed(60);
-    motorR.setSpeed(60);
+    motorL.run(FORWARD);
     motorR.run(FORWARD);
-    delay(30);
- 
+    
+    motorL.setSpeed(60);  //go a little further to make sure clear of wall edge while turning right, adjust as necessary
+    motorR.setSpeed(60);
+    delay(50);
+    
+    motorL.setSpeed(0);
+    motorR.setSpeed(0);
+    delay(3000);  //long delay to start just to visualize what it's doing, decrease to optimize speed
+    
+    
+    //TODO if it sees wall too close, give longer movement forward before checking again so it's further radius from wall
+    
+    edgeCurTime = millis();
+    edgeLastTime = edgeCurTime;
+    
+    while(!wallFound){  //keep doing edge finding/moving forward until certain time has passed since last lost edge
+      while(!edgeFound){  //while we haven't found the edge yet
+         motorL.setSpeed(speedLstraight);
+         motorR.run(BACKWARD);
+         motorR.setSpeed(speedRstraight);
+         delay(25);
+         motorL.setSpeed(0);
+         motorR.run(FORWARD);
+         motorR.setSpeed(0);
+         delay(50);
+         updatePings();
+         if(mmSideCur < 250){  //shouldn't be any other walls within ~25cm of side of robot besides the turn it's tracking; change as needed
+           edgeFound = true;
+         }
+      }
+      updatePings();
+      updatePings();
+      while( !((mmSideCur - mmSideLast) > 100) && (edgeCurTime - edgeLastTime < 1000)){  //while not the case that it sees discontinuity (meaning lost edge) AND that time hasn't expired, keep going forward in here
+        motorL.setSpeed(60);
+        motorR.setSpeed(67); //guessing at matched value for straightness, doesn't need to be perfect
+        updatePings();
+        //lastTime = curTime;
+        edgeCurTime = millis();
+      }
+      if(edgeCurTime - edgeLastTime < 1000) {
+        //time expired, assume straight wall ahead, set MOVING state and return to main proram loop
+        STATE = MOVING;
+        return;  //TODO make sure no cleanup/other change of variables needs to take place before leaving function (unlikely)
+      }
+      else{
+        edgeLastTime = millis();  //last time we lost edge was now
+        edgeFound = false;  //lost the edge, let the wallFound bool make it go back into !edgeFound loop
+      }
+         //now move forward until either lose the edge or time expires
+           //if lose edge, update time, let it go back to edge finding while loop, change edgeFound = false
+           //if time expires, set state to MOVING and return from turningRight() function
+    }
 }
 void findWall()
 {
