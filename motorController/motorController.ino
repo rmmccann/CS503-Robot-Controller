@@ -158,47 +158,66 @@ long ping(int pingPin)
   return pulseIn(pingPin, HIGH);  //returns 
 }
 
+int targetDist = 12;
+int goodOffset = 4;
+int badOffset = 6;
+int goodBadRange = badOffset - goodOffset;
+int minGoodRange = targetDist - goodOffset;
+int maxGoodRange = targetDist + goodOffset;
+// int minBadRange = targetDist - badOffset;
+// int maxBadRange = targetDist + badOffset;
 void movingState()
 {
  //get time it takes robot to get certain distance closer at max supported side reading angle (~40 deg)
   //and make adjustment based on that max speed closer to wall at given PINGTIME (time between pings)
   
-  if(sideDiff == 0) return;
-  
-  Serial.println(abs(sideDiff));
-  mmIdealMiss = mmSideIdeal - mmSideCur;  //supposed to be used to proportionately adjust distance from wall
-
-  if(sideDiff < 0){  //cur-last < 0 means getting closer to wall, slow down left wheel
-    adjustL = map(-sideDiff, 1, 8, minAdjust, maxAdjust);   //have to adjust in_max according to PINGTIME. shorter time between pings = less possible max distance traveled
-    if(adjustL > maxAdjust) adjustL = maxAdjust;  //if sideDiff > in_max, adjustL could be set very high, so cap at 30 manually
-    //speedL -= adjustL;
-    speedL = speedLstraight - adjustL;
-    //if(speedL<60) speedL = 60;
-    
-    adjustR = map(-sideDiff, 1, 8, minAdjust, maxAdjust);
-    if(adjustR > maxAdjust) adjustR = maxAdjust;
-    //speedR += adjustR;  //at the same time, adjust right wheel to go faster for quicker response to go parallel
-    speedR = speedRstraight + adjustR;
-    //if(speedR>speedRstraight+30) speedR = speedRstraight+30;  //just in case it goes too high
-    
-    motorL.setSpeed(speedL);
-    motorR.setSpeed(speedR);  //less than ideal speed, speed back up to optimal
+  if(mmSideCur > maxGoodRange) //too far away
+  {
+  	motorR.setSpeed(((goodBadRange-(mmSideCur - maxGoodRange))/goodBadRange)*SpeedR);
   }
-  else if(sideDiff > 0){
-    adjustR = map(sideDiff, 1, 8, minAdjust, maxAdjust);  //in_max of 8 is from observational measurements
-    if(adjustR > maxAdjust) adjustR = maxAdjust;
-    //speedR -= adjustR;
-    speedR = speedRstraight - adjustR;
-    //if(speedR<60) speedR = 60;  //don't need these checks since adjustR and adjustL are checked against adjustMax anyway
-    
-    adjustL = map(sideDiff, 1, 8, minAdjust, maxAdjust);
-    if(adjustL > maxAdjust) adjustL = maxAdjust;
-    //speedL += adjustL;  //at the same time, adjust right wheel to go faster for quicker response to go parallel
-    speedL = speedLstraight + adjustL;
-    //if(speedL>speedLstraight+30) speedL = speedLstraight+30;  //just in case it goes too high
-    
-    motorR.setSpeed(speedR);
-    motorL.setSpeed(speedL);
+  else if(mmSideCur < minGoodRange) //too close
+  {
+  	motorL.setSpeed(((goodBadRange-(minGoodRange - mmSideCur))/goodBadRange)*SpeedL);
+  }
+  else
+  {
+	  if(sideDiff == 0) return;
+	  
+	  Serial.println(abs(sideDiff));
+	  mmIdealMiss = mmSideIdeal - mmSideCur;  //supposed to be used to proportionately adjust distance from wall
+
+	  if(sideDiff < 0){  //cur-last < 0 means getting closer to wall, slow down left wheel
+	    adjustL = map(-sideDiff, 1, 8, minAdjust, maxAdjust);   //have to adjust in_max according to PINGTIME. shorter time between pings = less possible max distance traveled
+	    if(adjustL > maxAdjust) adjustL = maxAdjust;  //if sideDiff > in_max, adjustL could be set very high, so cap at 30 manually
+	    //speedL -= adjustL;
+	    speedL = speedLstraight - adjustL;
+	    //if(speedL<60) speedL = 60;
+	    
+	    adjustR = map(-sideDiff, 1, 8, minAdjust, maxAdjust);
+	    if(adjustR > maxAdjust) adjustR = maxAdjust;
+	    //speedR += adjustR;  //at the same time, adjust right wheel to go faster for quicker response to go parallel
+	    speedR = speedRstraight + adjustR;
+	    //if(speedR>speedRstraight+30) speedR = speedRstraight+30;  //just in case it goes too high
+	    
+	    motorL.setSpeed(speedL);
+	    motorR.setSpeed(speedR);  //less than ideal speed, speed back up to optimal
+	  }
+	  else if(sideDiff > 0){
+	    adjustR = map(sideDiff, 1, 8, minAdjust, maxAdjust);  //in_max of 8 is from observational measurements
+	    if(adjustR > maxAdjust) adjustR = maxAdjust;
+	    //speedR -= adjustR;
+	    speedR = speedRstraight - adjustR;
+	    //if(speedR<60) speedR = 60;  //don't need these checks since adjustR and adjustL are checked against adjustMax anyway
+	    
+	    adjustL = map(sideDiff, 1, 8, minAdjust, maxAdjust);
+	    if(adjustL > maxAdjust) adjustL = maxAdjust;
+	    //speedL += adjustL;  //at the same time, adjust right wheel to go faster for quicker response to go parallel
+	    speedL = speedLstraight + adjustL;
+	    //if(speedL>speedLstraight+30) speedL = speedLstraight+30;  //just in case it goes too high
+	    
+	    motorR.setSpeed(speedR);
+	    motorL.setSpeed(speedL);
+	}
   }
 }
 
