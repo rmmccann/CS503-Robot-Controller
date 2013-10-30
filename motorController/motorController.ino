@@ -183,11 +183,21 @@ void movingState()
   
   if(mmSideCur > maxGoodRange) //too far away
   {
-  	motorR.setSpeed(((goodBadRange-(mmSideCur - maxGoodRange))/goodBadRange)*SpeedR);
+  	if(mmSideCur > maxBadRange)
+  	{
+  		motorR.setSpeed(0);
+  	}
+  	else
+  	motorR.setSpeed(((goodBadRange-(mmSideCur - maxGoodRange))/goodBadRange)*speedR);
   }
   else if(mmSideCur < minGoodRange) //too close
   {
-  	motorL.setSpeed(((goodBadRange-(minGoodRange - mmSideCur))/goodBadRange)*SpeedL);
+  	if(mmSideCur < minBadRange)
+  	{
+  		motorL.setSpeed(0);
+  	}
+  	else
+  	motorL.setSpeed(((goodBadRange-(minGoodRange - mmSideCur))/goodBadRange)*speedL);
   }
   else
   {
