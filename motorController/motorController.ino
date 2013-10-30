@@ -10,6 +10,7 @@ The Wrecking Bot ™
 
 
 int STATE = 0;
+int LASTSTATE = 0;
 
 const int MOVING = 0;
 const int TURNING_LEFT = 1;
@@ -21,49 +22,31 @@ float speed = 80;
 #define SIDEPING A1
 #define PINGTIME 75  //ms between ping reading updates  //at 300ms and L/R speeds of 90/99, will go at most 3cm closer to wall in that time assuming it stays within 45deg of wall
 
-//int ledPin = 2;
-
-/*
-///
- int followDistance = 11;
- int tolerance = 4;
- int goodTolerance = 2;
- int minFollowDist = followDistance-tolerance;
- int maxFollowDist = followDistance+tolerance;
- int minGoodRange = followDistance-goodTolerance;
- int maxGoodRange = followDistance+goodTolerance;
- 
- int minFrontDist = 15;
- ///
- */
-
 AF_DCMotor motorL(1);
 AF_DCMotor motorR(2);
-
-//long curSpaceRight;
-//long curSpaceFront;
 
 int speedLstraight = 90;  //approximate values to go straight
 int speedRstraight = 99;
 int speedL = speedLstraight;
 int speedR = speedRstraight;
 
-unsigned long lastTime; //last time ping readings were taken; used to space out pings so that some distance will accumulate
-unsigned long curTime;
+unsigned long lastTime = 0; //last time ping readings were taken; used to space out pings so that some distance will accumulate
+unsigned long curTime = 0;
 
 const int mmSideIdeal = 110;  //ideal dist to stay from wall ~11cm
 const int mmSideTolerance = 20; //can be 2cm off either side before needing to adjust
 int mmIdealMiss;
 
-int mmFrontCur;  //ping distance history; use two distance readings to know how non-parallel robot is and which way to turn to correct
-int mmFrontLast; //make sure to leave a little time between readings so enough distance change happens to be useful data
-int mmSideCur;   //+not too long or robot will be far off course
-int mmSideLast;
+int mmFrontCur = 0;  //ping distance history; use two distance readings to know how non-parallel robot is and which way to turn to correct
+int mmFrontLast = 0; //make sure to leave a little time between readings so enough distance change happens to be useful data
+int mmSideCur = 0;   //+not too long or robot will be far off course
+int mmSideLast = 0;
 
-int frontDiff;  //calculated immediately following ping readings for moving state
-int sideDiff;
+int frontDiff = 0;  //calculated immediately following ping readings for moving state
+int sideDiff = 0;
 
-const int maxAdjust = 30;  //maximum adjustment for re-aligning robot; turns quickly enough and won't stall
+const int maxAdjust = 80;  //maximum adjustment for re-aligning robot; turns quickly enough and won't stall
+const int minAdjust = 5;
 //idea is that the bigger diff in side pings, the more of an adjustment needs to be made, and vice versa
 int adjustL;  //speed adjustment; function of diff between side ping readings
 int adjustR;
@@ -81,20 +64,12 @@ void setup()
   motorL.run(RELEASE);
 
   Serial.println("Setup complete");
+  updatePings();
+  updatePings();  //initialize ping sensors so it doesn't accidentally jump to different states
 }
 
 void loop()
 {
-  /*
-	//First take Ping sensor measurements
-   	long rightPingDuration = ping(rightPing);
-   	curSpaceRight = microsecondsToCentimeters(rightPingDuration);
-   
-   	long frontPingDuration = ping(frontPing);
-   	curSpaceFront = microsecondsToCentimeters(frontPingDuration);
-   */
-  //motorL.setSpeed(speedLstraight);
-  //motorR.setSpeed(speedRstraight);
   motorL.run(FORWARD);
   motorR.run(FORWARD);
   
@@ -111,9 +86,20 @@ void loop()
      //Serial.println("ping");
    }
    
+     //if MOVING and diff between curPing and lastPing is above certain amount (means that suddenly sees longer range); most likely right turn
+     if((STATE == MOVING && (mmSideCur - mmSideLast) > 100) || (LASTSTATE == TURNING_RIGHT && mmSideCur > 250 && mmSideLast > 250)) {  //either currently moving and see jump in dist, or in middle of right turn looking for wall again
+       STATE = TURNING_RIGHT;
+     }
+     else if (STATE == TURNING_RIGHT && mmSideCur < 250) {
+       //currently turning right, and now see wall, so go forward again in MOVING state
+       //if it needs to turn right again, will get caught by if statement above and will rotate more until wall found
+       //if it's actually the straight wall again, will just stay in MOVING state anyway
+       STATE = MOVING;
+     }
+     
+     
    	//Then call the appropriate code for the current state
-   //note to self: make sure nothing will block more than few ms so ping readings can be regularly taken
-   //want small, high frequency adjustments, not bold moves
+   LASTSTATE = STATE;  //keep history of state to make better judgements
    switch(STATE)
    	{
    		case MOVING:
@@ -159,16 +145,7 @@ long ping(int pingPin)
 void movingState()
 {
  //get time it takes robot to get certain distance closer at max supported side reading angle (~40 deg)
-  
   //and make adjustment based on that max speed closer to wall at given PINGTIME (time between pings)
-  
-  //figure out if turning and which direction while moving forward
-  /*
-  if(mmSideLast < 300 && mmSideCur >= 300){  //if last reading was reasonable, and current reading is far off, assume turning right
-     STATE = TURNING_RIGHT;
-     return;
-  }
-  */
   
   if(sideDiff == 0) return;
   
@@ -176,44 +153,37 @@ void movingState()
   mmIdealMiss = mmSideIdeal - mmSideCur;  //supposed to be used to proportionately adjust distance from wall
 
   if(sideDiff < 0){  //cur-last < 0 means getting closer to wall, slow down left wheel
-    adjustL = map(-sideDiff, 1, 8, 1, 30);   //pings happening quicker, less possible max diff, so account for it by 3 multiplier
-    if(adjustL > 30) adjustL = 30;  //if sideDiff > in_max, adjustL could be set very high, so cap at 30 manually
-    speedL -= adjustL;
-    if(speedL<60) speedL = 60;
+    adjustL = map(-sideDiff, 1, 8, minAdjust, maxAdjust);   //have to adjust in_max according to PINGTIME. shorter time between pings = less possible max distance traveled
+    if(adjustL > maxAdjust) adjustL = maxAdjust;  //if sideDiff > in_max, adjustL could be set very high, so cap at 30 manually
+    //speedL -= adjustL;
+    speedL = speedLstraight - adjustL;
+    //if(speedL<60) speedL = 60;
+    
+    adjustR = map(-sideDiff, 1, 8, minAdjust, maxAdjust);
+    if(adjustR > maxAdjust) adjustR = maxAdjust;
+    //speedR += adjustR;  //at the same time, adjust right wheel to go faster for quicker response to go parallel
+    speedR = speedRstraight + adjustR;
+    //if(speedR>speedRstraight+30) speedR = speedRstraight+30;  //just in case it goes too high
+    
     motorL.setSpeed(speedL);
-    motorR.setSpeed(speedRstraight);  //less than ideal speed, speed back up to optimal
+    motorR.setSpeed(speedR);  //less than ideal speed, speed back up to optimal
   }
   else if(sideDiff > 0){
-    adjustR = map(sideDiff, 1, 8, 1, 30);  //in_max of 10 is from observational measurements
-    if(adjustR > 30) adjustR = 30;
-    speedR -= adjustR;
-    if(speedR<60) speedR = 60;
+    adjustR = map(sideDiff, 1, 8, minAdjust, maxAdjust);  //in_max of 8 is from observational measurements
+    if(adjustR > maxAdjust) adjustR = maxAdjust;
+    //speedR -= adjustR;
+    speedR = speedRstraight - adjustR;
+    //if(speedR<60) speedR = 60;  //don't need these checks since adjustR and adjustL are checked against adjustMax anyway
+    
+    adjustL = map(sideDiff, 1, 8, minAdjust, maxAdjust);
+    if(adjustL > maxAdjust) adjustL = maxAdjust;
+    //speedL += adjustL;  //at the same time, adjust right wheel to go faster for quicker response to go parallel
+    speedL = speedLstraight + adjustL;
+    //if(speedL>speedLstraight+30) speedL = speedLstraight+30;  //just in case it goes too high
+    
     motorR.setSpeed(speedR);
-    motorL.setSpeed(speedLstraight);
+    motorL.setSpeed(speedL);
   }
-  //non-working "keep certain distance from wall adjustment" code
-  /*(
-  else if(abs(mmIdealMiss) > mmSideTolerance){  //if going mostly straight and not at right dist from wall
-    if(mmIdealMiss > 0) {  //too close to wall, increase right wheel speed for a bit
-      //adjustR = map(mmIdealMiss, mmSideTolerance, mmSideTolerance+150, 30, 100); //map how much it's missed the ideal by to how much it should compensate
-      //motorR.setSpeed(speedR + adjustR);
-      motorL.setSpeed(60);  //slow down other wheel simultaneously for quicker adjust response
-      delay(90);
-      //motorR.setSpeed(speedR - adjustR);  //return to speed that was making it straight
-      motorL.setSpeed(speedL);
-      //delay(100);  //let it get back up to speed going straight again
-    }
-    else {  //must be less than 0 since already know diff is outside of tolerance range
-      //adjustL = map(mmIdealMiss, mmSideTolerance, mmSideTolerance+150, 30, 100); //map how much it's missed the ideal by to how much it should compensate
-      //motorL.setSpeed(speedL + adjustL);
-      motorR.setSpeed(60);
-      delay(90);
-      //motorL.setSpeed(speedL - adjustL);  //return to speed that was making it straight
-      motorR.setSpeed(speedR);
-      //delay(100);
-    }
-  }
-  */
 }
 
 void turningLeft()
@@ -234,7 +204,18 @@ void turningLeft()
 }
 void turningRight()
 {
-
+ //in this function, should just turn slowly until pings find right edge again, then go to MOVING so that it goes forward a bit, loses it, and comes back
+ //to this function again until a straight wall is found and it just stays in MOVING state
+ //hypothetically, this method will give accurate 90deg and 180deg turns without any special additional code since it progressively takes the turn
+    motorL.setSpeed(60);  //small turns right with pivot (try turn in place too if this doesn't work well enough
+    motorR.setSpeed(100);
+    motorR.run(BACKWARD);
+    delay(50);
+    motorL.setSpeed(60);
+    motorR.setSpeed(60);
+    motorR.run(FORWARD);
+    delay(30);
+ 
 }
 void findWall()
 {
