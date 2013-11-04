@@ -86,7 +86,16 @@ void setup()
   pingFront();
   delay(5);
   
-
+  digitalWrite(A5, HIGH);
+  delay(250);
+  digitalWrite(A5, LOW);
+  digitalWrite(A3, HIGH);
+  delay(250);
+  digitalWrite(A5, HIGH);
+  digitalWrite(A3, LOW);
+  delay(250);
+  digitalWrite(A5, LOW);
+  
   Serial.println("Setup complete");
 }
 
@@ -98,9 +107,10 @@ void loop()
 
   curTime = millis();
   if(curTime - lastTime > PINGTIME) {
-    pingFront();
-    delay(1);
     pingSide();
+    delay(5);
+    pingFront();
+    
     lastTime = curTime;
     //Serial.println("ping");
   }
@@ -114,12 +124,12 @@ void loop()
   */
 
      //LASTSTATE = STATE;  //keep history of state to make better judgements
-     if((STATE == MOVING) && (mmSideCur-mmSideLast > 100)){  //if it's moving and it sees a sudden increase in distance (10cm discontinuity) then assume needs to turn right
+     if((STATE == MOVING) && (mmSideCur-mmSideLast > 100) /*&& (mmSideLast < 300)*/){  //if it's moving and it sees a sudden increase in distance (10cm discontinuity) then assume needs to turn right
        //TODO add verification to turn right here; a few more samples, a delay, something. i dunno. sheeit.
        
        STATE = TURNING_RIGHT;
      }
-     else if(mmFrontCur < 165){
+     else if(mmFrontCur < 150){
        STATE = TURNING_LEFT;
      }
      else {
@@ -132,6 +142,9 @@ void loop()
    		case MOVING:
                         digitalWrite(A5, LOW);  //turn off cloudy LED
                         digitalWrite(A3, LOW);  //turn off clear LED
+                        //digitalWrite(A3, HIGH);
+                        //delay(100);
+                        //digitalWrite(A3, LOW);  //blink clear LED to tell when going to moving state
    			movingState();
    			break;
    		case TURNING_LEFT:
@@ -256,7 +269,7 @@ void turningLeft()
   boolean doneTurning = false;
   while(!doneTurning) {
      pingFront();
-     if(mmFrontCur > 165){
+     if(mmFrontCur > 150){
        doneTurning = true; 
      }
      else{
@@ -348,8 +361,8 @@ void turningRight()
    
     delay(250);  //decrease to optimize
     
-    mmSideCur = 500;
-    mmSideLast = 500;
+    //mmSideCur = 500;
+    //mmSideLast = 500;
     //now while loop just going straight until wall detected, then go to moving state
     while(!wallFound){
        //while wall not found, move forward. Find wall-->go to moving state; hopefully updates fast enough to catch the edge then loses it to go into turning_right again
@@ -363,7 +376,8 @@ void turningRight()
           //pingSide();
           //delay(10);
           //pingSide();
-          
+          //mmSideCur = 500;
+          //mmSideLast = 500;
           STATE = MOVING;
           //LASTSTATE = TURNING_RIGHT;
           //delay(400);
