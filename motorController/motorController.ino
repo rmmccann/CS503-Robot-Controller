@@ -371,6 +371,14 @@ void turningRight()
         motorR.setSpeed(speedRstraight-20);
         pingSide();
         delay(50);
+
+        pingFront(); //hopefully this won't interfere with the other b/c of the delay
+        if(mmFrontCur < 100)
+        {
+          STATE = TURNING_LEFT; // for safety
+          return;
+        }
+
         if(mmSideCur < 300){
           //detect close edge, go to moving
           //pingSide();
