@@ -26,6 +26,9 @@ AF_DCMotor motorR(2);
 
 int speedLstraight = 90;  //approximate values to go straight
 int speedRstraight = 99;
+int lfast = 150;
+int rfast = 157;
+
 int speedL = speedLstraight;
 int speedR = speedRstraight;
 
@@ -108,7 +111,7 @@ void loop()
   curTime = millis();
   if(curTime - lastTime > PINGTIME) {
     pingSide();
-    delay(5);
+    delay(10);
     pingFront();
     
     lastTime = curTime;
@@ -232,15 +235,17 @@ void movingState()
 	  if(sideDiff < 0){  //cur-last < 0 means getting closer to wall, slow down left wheel
 	    adjustL = map(-sideDiff, 1, 8, minAdjust, maxAdjust);   //have to adjust in_max according to PINGTIME. shorter time between pings = less possible max distance traveled
 	    if(adjustL > maxAdjust) adjustL = maxAdjust;  //if sideDiff > in_max, adjustL could be set very high, so cap at 30 manually
-	    //speedL -= adjustL;
+	    
 	    speedL = speedLstraight - adjustL;
-	    //if(speedL<60) speedL = 60;
+            //speedL = lfast - adjustL;
+	    
 	    
 	    adjustR = map(-sideDiff, 1, 8, minAdjust, maxAdjust);
 	    if(adjustR > maxAdjust) adjustR = maxAdjust;
-	    //speedR += adjustR;  //at the same time, adjust right wheel to go faster for quicker response to go parallel
+	    
 	    speedR = speedRstraight + adjustR;
-	    //if(speedR>speedRstraight+30) speedR = speedRstraight+30;  //just in case it goes too high
+            //speedR = rfast + adjustR;
+	   
 	    
 	    motorL.setSpeed(speedL);
 	    motorR.setSpeed(speedR);  //less than ideal speed, speed back up to optimal
@@ -248,15 +253,16 @@ void movingState()
 	  else if(sideDiff > 0){
 	    adjustR = map(sideDiff, 1, 8, minAdjust, maxAdjust);  //in_max of 8 is from observational measurements
 	    if(adjustR > maxAdjust) adjustR = maxAdjust;
-	    //speedR -= adjustR;
+
 	    speedR = speedRstraight - adjustR;
-	    //if(speedR<60) speedR = 60;  //don't need these checks since adjustR and adjustL are checked against adjustMax anyway
+            //speedR = rfast - adjustR;
+	    
 	    
 	    adjustL = map(sideDiff, 1, 8, minAdjust, maxAdjust);
 	    if(adjustL > maxAdjust) adjustL = maxAdjust;
-	    //speedL += adjustL;  //at the same time, adjust right wheel to go faster for quicker response to go parallel
+
 	    speedL = speedLstraight + adjustL;
-	    //if(speedL>speedLstraight+30) speedL = speedLstraight+30;  //just in case it goes too high
+              //speedL = lfast + adjustL;	
 	    
 	    motorR.setSpeed(speedR);
 	    motorL.setSpeed(speedL);
@@ -365,10 +371,12 @@ void turningRight()
     //mmSideLast = 500;
     //now while loop just going straight until wall detected, then go to moving state
     while(!wallFound){
+      //here have a 
        //while wall not found, move forward. Find wall-->go to moving state; hopefully updates fast enough to catch the edge then loses it to go into turning_right again
       //if it doesn't see a lost edge, then it's just a 90deg turn and MOVING can take over
         motorL.setSpeed(speedLstraight-20);
         motorR.setSpeed(speedRstraight-20);
+        delay(50);
         pingSide();
         delay(50);
 
