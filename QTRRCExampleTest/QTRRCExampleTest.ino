@@ -27,7 +27,7 @@
 // sensor 0 before being lost.  5000 means the line is directly under sensor 5 or was
 // last seen by sensor 5 before being lost.
 
-
+#define LEDPIN        A3
 #define NUM_SENSORS   4     // number of sensors used
 #define TIMEOUT       2500  // waits for 2500 microseconds for sensor outputs to go low
 #define EMITTER_PIN   QTR_NO_EMITTER_PIN     // emitter is controlled by digital pin 2
@@ -46,13 +46,15 @@ void setup()
   delay(50);
   left.setSpeed(40);
   delay(500);
-  pinMode(13, OUTPUT);
-  digitalWrite(13, HIGH);    // turn on Arduino's LED to indicate we are in calibration mode
+  pinMode(A2, OUTPUT);
+  digitalWrite(A2, LOW);
+  pinMode(LEDPIN, OUTPUT);
+  digitalWrite(LEDPIN, HIGH);    // turn on Arduino's LED to indicate we are in calibration mode
   for (int i = 0; i < 400; i++)  // make the calibration take about 10 seconds
   {
     qtrrc.calibrate();       // reads all sensors 10 times at 2500 us per read (i.e. ~25 ms per call)
   }
-  digitalWrite(13, LOW);     // turn off Arduino's LED to indicate we are through with calibration
+  digitalWrite(LEDPIN, LOW);     // turn off Arduino's LED to indicate we are through with calibration
 
   // print the calibration minimum values measured when emitters were on
   Serial.begin(9600);
@@ -90,8 +92,8 @@ void loop()
     Serial.print(sensorValues[i]);
     Serial.print('\t');
   }
-  //Serial.println(); // uncomment this line if you are using raw values
-  Serial.println(position); // comment this line out if you are using raw values
+  Serial.println(); // uncomment this line if you are using raw values
+  //Serial.println(position); // comment this line out if you are using raw values
   
-  delay(2);
+  delay(3);
 }
