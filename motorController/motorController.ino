@@ -13,7 +13,6 @@ int LASTSTATE = 0;
 const int MOVING = 0;
 const int TURNING_LEFT = 1;
 const int TURNING_RIGHT = 2;
-const int STILL_RIGHT = 3;
 
 float speed = 80;
 
@@ -33,18 +32,13 @@ unsigned long lastTime = 0; //last time ping readings were taken; used to space 
 unsigned long curTime = 0;
 
 const int mmSideIdeal = 110;  //ideal dist to stay from wall ~11cm
-const int mmSideTolerance = 20; //can be 2cm off either side before needing to adjust
 int mmIdealMiss;
 
 int mmFrontCur = 0;  //ping distance history; use two distance readings to know how non-parallel robot is and which way to turn to correct
-int mmFrontCur2 = 0;
 int mmFrontLast = 0; //make sure to leave a little time between readings so enough distance change happens to be useful data
-int mmFrontLast2 = 0;
 
 int mmSideCur = 0;   //+not too long or robot will be far off course
-int mmSideCur2 = 0;
 int mmSideLast = 0;
-int mmSideLast2 = 0;
 
 int frontDiff = 0;  //calculated immediately following ping readings for moving state
 int sideDiff = 0;
