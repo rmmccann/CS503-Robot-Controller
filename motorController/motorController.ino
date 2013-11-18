@@ -4,6 +4,7 @@
  */
 
 #include <AFMotor.h>
+#include <QTRSensors.h>
 //#include <PCM.h>
 //#include "sounddata.h"
 
@@ -140,6 +141,96 @@ void loop()
 	//make it smart, have several modes of trying to find wall given last state before losing wall
 	}
 }
+
+//
+// START ODOMETRY
+//
+
+//global variables
+int LEFT_INT = 0; //pin d2
+int RIGHT_ITN = 1; //pin d3
+int countL = 0;
+int countR = 0;
+float sectorsPerMM = 1; //TODO: need to find the actual value
+float acceptable_difference = 1; //TODO: need a logical value here
+
+//these will go in setup():
+//attachInterrupt(LEFT_INT, countLeft, CHANGE);
+//attachInterrupt(RIGHT_INT, countRight, CHANGE);
+
+void moveForward(float dist)
+{
+	resetCounters();
+
+	//TODO: set motor speeds
+
+	while(1)
+	{
+		if(abs(getLeftDist()-getRightDist()) < acceptable_difference)
+		{
+			//shouldn't happen, fix it
+		}
+
+		if(getDistTravelled() >= dist)
+		{
+			//we're done. exit function
+			return;
+		}
+	}
+}
+void turnLeft(float dist, float radius)
+{
+	resetCounters();
+
+	//TODO: set motor speeds
+
+	while(1)
+	{
+		//TODO
+	}
+}
+void turnRight(float dist, float radius)
+{
+	resetCounters();
+}
+void stopAt(float dist)
+{
+	//TODO
+}
+
+void resetCounters()
+{
+	countL = countR = 0;
+}
+
+//interupt handlers
+void countLeft()
+{
+	++countL;
+}
+void countRight()
+{
+	++countR;
+}
+
+//float getLeftDistTravelled()
+float getLeftDist()
+{
+	return countL/sectorsPerMM;
+}
+float getRightDist()
+{
+	return countR/sectorsPerMM;
+}
+
+float getDistTravelled()
+{
+	return (getLeftDist()/2 + getRightDist()/2);
+}
+
+//
+// END
+//
 
 void pingSide(){
 	mmSideLast = mmSideCur;
