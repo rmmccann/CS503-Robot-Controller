@@ -5,6 +5,7 @@
 
 #include <AFMotor.h>
 #include <QTRSensors.h>
+#include <PinChangeInt.h>
 //#include <PCM.h>
 //#include "sounddata.h"
 
@@ -50,6 +51,9 @@ const int minAdjust = 10;
 int adjustL;  //speed adjustment; function of diff between side ping readings
 int adjustR;
 
+int LEFT_INT = 0;
+int RIGHT_INT = 1;
+
 void setup()
 {
 	Serial.begin(9600);
@@ -88,6 +92,9 @@ void setup()
 	digitalWrite(A3, LOW);
 	delay(250);
 	digitalWrite(A5, LOW);
+
+	PCintPort::attachInterrupt(LEFT_INT, &countLeft, CHANGE);
+	PCintPort::attachInterrupt(RIGHT_INT, &countRight, CHANGE);
 
 	Serial.println("Setup complete");
 }
@@ -147,8 +154,7 @@ void loop()
 //
 
 //global variables
-int LEFT_INT = 0; //pin d2
-int RIGHT_ITN = 1; //pin d3
+
 int countL = 0;
 int countR = 0;
 float sectorsPerMM = 1; //TODO: need to find the actual value
@@ -157,24 +163,60 @@ float acceptable_difference = 1; //TODO: need a logical value here
 //these will go in setup():
 //attachInterrupt(LEFT_INT, countLeft, CHANGE);
 //attachInterrupt(RIGHT_INT, countRight, CHANGE);
+PCintPort::attachInterrupt(LEFT_INT, &countLeft, CHANGE);
+PCintPort::attachInterrupt(RIGHT_INT, &countRight, CHANGE);
 
 void moveForward(float dist)
 {
 	resetCounters();
 
+	if(getDistTravelled() >= dist)
+	{
+		//we're done. exit function
+		return;
+	}
+
 	//TODO: set motor speeds
+	motorL.setSpeed(speedL);
+	motorR.setSpeed(speedR);
+
+	int mmIdealMiss;
 
 	while(1)
 	{
 		if(abs(getLeftDist()-getRightDist()) < acceptable_difference)
 		{
-			//shouldn't happen, fix it
-		}
+			//shouldn't happen, fix it!
 
-		if(getDistTravelled() >= dist)
-		{
-			//we're done. exit function
-			return;
+
+			//TODO: replace mmSideIdeal
+			//this is not used
+			mmIdealMiss = mmSideIdeal - mmSideCur;  //supposed to be used to proportionately adjust distance from wall
+
+			//Replace side diff with amount off
+			if(sideDiff < 0){  //cur-last < 0 means getting closer to wall, slow down left wheel
+				adjustL = map(-sideDiff, 1, 8, minAdjust, maxAdjust);   //have to adjust in_max according to PINGTIME. shorter time between pings = less possible max distance traveled
+				if(adjustL > maxAdjust) adjustL = maxAdjust;  //if sideDiff > in_max, adjustL could be set very high, so cap at 30 manually
+				speedL = speedLstraight - adjustL;
+				
+				adjustR = map(-sideDiff, 1, 8, minAdjust, maxAdjust);
+				if(adjustR > maxAdjust) adjustR = maxAdjust;
+				speedR = speedRstraight + adjustR;
+				
+				motorL.setSpeed(speedL);
+				motorR.setSpeed(speedR);  //less than ideal speed, speed back up to optimal
+			}
+		else if(sideDiff > 0){
+			adjustR = map(sideDiff, 1, 8, minAdjust, maxAdjust);  //in_max of 8 is from observational measurements
+			if(adjustR > maxAdjust) adjustR = maxAdjust;
+			speedR = speedRstraight - adjustR;
+			
+			adjustL = map(sideDiff, 1, 8, minAdjust, maxAdjust);
+			if(adjustL > maxAdjust) adjustL = maxAdjust;
+			speedL = speedLstraight + adjustL;
+			
+			motorR.setSpeed(speedR);
+			motorL.setSpeed(speedL);
 		}
 	}
 }
