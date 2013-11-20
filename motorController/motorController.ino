@@ -16,12 +16,6 @@ const int MOVING = 0;
 const int TURNING_LEFT = 1;
 const int TURNING_RIGHT = 2;
 
-float speed = 80;
-
-#define FRONTPING A0
-#define SIDEPING A1
-#define PINGTIME 75  //ms between ping reading updates  //at 300ms and L/R speeds of 90/99, will go at most 3cm closer to wall in that time assuming it stays within 45deg of wall
-
 AF_DCMotor motorL(1);  //TODO just testing different frequencies; will be quieter, but what is the effcect on performance?
 AF_DCMotor motorR(2);
 
@@ -29,9 +23,6 @@ int speedLstraight = 90;  //approximate values to go straight
 int speedRstraight = 99;
 int speedL = speedLstraight;
 int speedR = speedRstraight;
-
-unsigned long lastTime = 0; //last time ping readings were taken; used to space out pings so that some distance will accumulate
-unsigned long curTime = 0;
 
 const int mmSideIdeal = 110;  //ideal dist to stay from wall ~11cm
 int mmIdealMiss;
@@ -74,15 +65,6 @@ void setup()
 	motorL.setSpeed(0);
 	motorL.run(RELEASE);
 
-	pingSide();
-	delay(5);
-	pingSide();
-	delay(5);
-	pingFront();
-	delay(5);
-	pingFront();
-	delay(5);
-
 	digitalWrite(A5, HIGH);
 	delay(250);
 	digitalWrite(A5, LOW);
@@ -104,16 +86,6 @@ void loop()
 	motorL.run(FORWARD);
 	motorR.run(FORWARD);
 
-	curTime = millis();
-	if(curTime - lastTime > PINGTIME) {
-		pingSide();
-		delay(5);
-		pingFront();
-
-		lastTime = curTime;
-	//Serial.println("ping");
-	}
-
 	//LASTSTATE = STATE;  //keep history of state to make better judgements
 	if((STATE == MOVING) && (mmSideCur-mmSideLast > 100) /*&& (mmSideLast < 300)*/){  //if it's moving and it sees a sudden increase in distance (10cm discontinuity) then assume needs to turn right
 		//TODO add verification to turn right here; a few more samples, a delay, something. i dunno. sheeit.
@@ -128,6 +100,7 @@ void loop()
 	}
 	//Then call the appropriate code for the current state
 
+/*
 	switch(STATE)
 	{
 		case MOVING:
@@ -145,36 +118,35 @@ void loop()
 			break;
 		default:
 			findWall(); //panic mode, bad news bears; will try and find something to follow again
-	//make it smart, have several modes of trying to find wall given last state before losing wall
+
 	}
+*/
+	moveForward(0);
 }
 
-//
-// START ODOMETRY
-//
-
 //global variables
-
 int countL = 0;
 int countR = 0;
 float sectorsPerMM = 1; //TODO: need to find the actual value
 float acceptable_difference = 1; //TODO: need a logical value here
-
-//these will go in setup():
-//attachInterrupt(LEFT_INT, countLeft, CHANGE);
-//attachInterrupt(RIGHT_INT, countRight, CHANGE);
-PCintPort::attachInterrupt(LEFT_INT, &countLeft, CHANGE);
-PCintPort::attachInterrupt(RIGHT_INT, &countRight, CHANGE);
+unsigned long currTimeL = 0;
+unsigned long lastTimeL = 0;
+unsigned long currTimeR = 0;
+unsigned long lastTimeR = 0;
+unsigned long angularVelocityDiffL = 0;
+unsigned long angularVelocityDiffR = 0;
 
 void moveForward(float dist)
 {
-	resetCounters();
+	// resetCounters();
 
+/*
 	if(getDistTravelled() >= dist)
 	{
 		//we're done. exit function
 		return;
 	}
+*/
 
 	//TODO: set motor speeds
 	motorL.setSpeed(speedL);
@@ -184,7 +156,7 @@ void moveForward(float dist)
 
 	while(1)
 	{
-		if(abs(getLeftDist()-getRightDist()) < acceptable_difference)
+		if((angularVelocityDiffL) - (angularVelocityDiffR) != 0)
 		{
 			//shouldn't happen, fix it!
 
@@ -206,17 +178,18 @@ void moveForward(float dist)
 				motorL.setSpeed(speedL);
 				motorR.setSpeed(speedR);  //less than ideal speed, speed back up to optimal
 			}
-		else if(sideDiff > 0){
-			adjustR = map(sideDiff, 1, 8, minAdjust, maxAdjust);  //in_max of 8 is from observational measurements
-			if(adjustR > maxAdjust) adjustR = maxAdjust;
-			speedR = speedRstraight - adjustR;
-			
-			adjustL = map(sideDiff, 1, 8, minAdjust, maxAdjust);
-			if(adjustL > maxAdjust) adjustL = maxAdjust;
-			speedL = speedLstraight + adjustL;
-			
-			motorR.setSpeed(speedR);
-			motorL.setSpeed(speedL);
+			else if(sideDiff > 0){
+				adjustR = map(sideDiff, 1, 8, minAdjust, maxAdjust);  //in_max of 8 is from observational measurements
+				if(adjustR > maxAdjust) adjustR = maxAdjust;
+				speedR = speedRstraight - adjustR;
+				
+				adjustL = map(sideDiff, 1, 8, minAdjust, maxAdjust);
+				if(adjustL > maxAdjust) adjustL = maxAdjust;
+				speedL = speedLstraight + adjustL;
+				
+				motorR.setSpeed(speedR);
+				motorL.setSpeed(speedL);
+			}
 		}
 	}
 }
@@ -249,10 +222,16 @@ void resetCounters()
 void countLeft()
 {
 	++countL;
+	lastTimeL = currTimeL;
+	currTimeL = millis();
+	angularVelocityDiffL = currTimeL - lastTimeL;
 }
 void countRight()
 {
 	++countR;
+	lastTimeR = currTimeR;
+	currTimeR = millis();
+	angularVelocityDiffR = currTimeR - lastTimeR;
 }
 
 //float getLeftDistTravelled()
@@ -270,224 +249,26 @@ float getDistTravelled()
 	return (getLeftDist()/2 + getRightDist()/2);
 }
 
-//
-// END
-//
-
-void pingSide(){
-	mmSideLast = mmSideCur;
-	mmSideCur = sideMM();
-	sideDiff = mmSideCur - mmSideLast;
-}
-
-void pingFront(){
-	mmFrontLast = mmFrontCur;
-	mmFrontCur = frontMM();
-	//mmFrontCur = 400;
-	frontDiff = mmFrontCur - mmFrontLast;
-}
-
-long ping(int pingPin)
+/*
+Check if we have gone far enough or reached a stop-at point
+*/
+/*
+void checkDistance()
 {
-  pinMode(pingPin, OUTPUT);
-  digitalWrite(pingPin, LOW);
-  delayMicroseconds(2);
-  digitalWrite(pingPin, HIGH);
-  delayMicroseconds(5);
-  digitalWrite(pingPin, LOW);
+	//CHECK FOR STOP-ATS
 
-  pinMode(pingPin, INPUT);
-  return pulseIn(pingPin, HIGH);  //returns 
-}
-
-int targetDist = 120;
-int goodOffset = 40;
-int badOffset = 60;
-int goodBadRange = badOffset - goodOffset;
-int minGoodRange = targetDist - goodOffset;
-int maxGoodRange = targetDist + goodOffset;
-int minBadRange = targetDist - badOffset;
-int maxBadRange = targetDist + badOffset;
-
-void movingState()
-{
- //get time it takes robot to get certain distance closer at max supported side reading angle (~40 deg)
-  //and make adjustment based on that max speed closer to wall at given PINGTIME (time between pings)
-		  if(sideDiff == 0) return;
-	  
-	  //Serial.println(abs(sideDiff));
-		  mmIdealMiss = mmSideIdeal - mmSideCur;  //supposed to be used to proportionately adjust distance from wall
-
-	  if(sideDiff < 0){  //cur-last < 0 means getting closer to wall, slow down left wheel
-		adjustL = map(-sideDiff, 1, 8, minAdjust, maxAdjust);   //have to adjust in_max according to PINGTIME. shorter time between pings = less possible max distance traveled
-		if(adjustL > maxAdjust) adjustL = maxAdjust;  //if sideDiff > in_max, adjustL could be set very high, so cap at 30 manually
-		//speedL -= adjustL;
-		speedL = speedLstraight - adjustL;
-		//if(speedL<60) speedL = 60;
-		
-		adjustR = map(-sideDiff, 1, 8, minAdjust, maxAdjust);
-		if(adjustR > maxAdjust) adjustR = maxAdjust;
-		//speedR += adjustR;  //at the same time, adjust right wheel to go faster for quicker response to go parallel
-		speedR = speedRstraight + adjustR;
-		//if(speedR>speedRstraight+30) speedR = speedRstraight+30;  //just in case it goes too high
-		
-		motorL.setSpeed(speedL);
-		motorR.setSpeed(speedR);  //less than ideal speed, speed back up to optimal
-	  }
-	  else if(sideDiff > 0){
-		adjustR = map(sideDiff, 1, 8, minAdjust, maxAdjust);  //in_max of 8 is from observational measurements
-		if(adjustR > maxAdjust) adjustR = maxAdjust;
-		//speedR -= adjustR;
-		speedR = speedRstraight - adjustR;
-		//if(speedR<60) speedR = 60;  //don't need these checks since adjustR and adjustL are checked against adjustMax anyway
-		
-		adjustL = map(sideDiff, 1, 8, minAdjust, maxAdjust);
-		if(adjustL > maxAdjust) adjustL = maxAdjust;
-		//speedL += adjustL;  //at the same time, adjust right wheel to go faster for quicker response to go parallel
-		speedL = speedLstraight + adjustL;
-		//if(speedL>speedLstraight+30) speedL = speedLstraight+30;  //just in case it goes too high
-		
-		motorR.setSpeed(speedR);
-		motorL.setSpeed(speedL);
-	}
-}
-
-void turningLeft()
-{
-	//when front sensor gets response within certain distance
-	boolean doneTurning = false;
-	while(!doneTurning) {
-		pingFront();
-		if(mmFrontCur > 150){
-			doneTurning = true; 
-		}
-		else{
-			motorR.setSpeed(speedRstraight);
-			motorL.setSpeed(speedLstraight);
-			motorR.run(FORWARD);
-			motorL.run(BACKWARD);
-			delay(50);
-		}
-	}
-
-	//apply reverse torque briefly to brake
-	motorR.run(BACKWARD);
-	motorL.run(FORWARD);
-	delay(75);
-
-	motorR.setSpeed(0);
-	motorL.setSpeed(0);
-	motorL.run(FORWARD);
-	motorR.run(FORWARD);
-	motorR.setSpeed(67);
-	motorL.setSpeed(60);
-	STATE = MOVING;
-
-	pingSide();
-	delay(1);
-	pingSide();
-	delay(1);
-	pingFront();
-	delay(1);
-	pingFront();
-	delay(1);
-}
-
-void turningRight()
-{
-//in this function, should just turn slowly until pings find right edge again, then go to MOVING so that it goes forward a bit, loses it, and comes back
-//to this function again until a straight wall is found and it just stays in MOVING state
-//hypothetically, this method will give accurate 90deg and 180deg turns without any special additional code since it progressively takes the turn
-	boolean edgeFound = false;
-	boolean wallFound = false;
-	
-	unsigned long edgeLastTime;  //last time since we lost the edge; if it's been longer than X ms since last losing edge, assume wall found, go back to MOVING to adjust parallelsim and continue
-	unsigned long edgeCurTime;
-	
-	//move forward a little further to clear it, then stop
-	motorL.setSpeed(speedLstraight-20);  //realign motors to go straight before delay, otherwise speedL and speedR could have adjustments applied to them, and delaying will make them turn wrong
-	motorR.setSpeed(speedRstraight-10);
-	delay(725);  //increase this value until robot clears edge enough before stopping
-	motorL.run(BACKWARD);
-	motorR.run(BACKWARD);
-	motorL.setSpeed(speedLstraight+20);
-	motorR.setSpeed(speedRstraight);
-	delay(50);
-	motorL.run(FORWARD);
-	motorR.run(FORWARD);
-	
-	motorL.setSpeed(0);
-	motorR.setSpeed(0);
-	delay(250);  //long delay to start just to visualize what it's doing, decrease to optimize speed
-	
-	
-	//90 right turn
-	motorL.setSpeed(speedLstraight);
-	motorR.run(BACKWARD);
-	motorR.setSpeed(speedRstraight);
-	delay(775);
-	motorL.run(BACKWARD);
-	motorR.run(FORWARD);
-	motorL.setSpeed(100);
-	motorR.setSpeed(100);
-	delay(50);
-	motorL.run(FORWARD);
-	motorL.setSpeed(0);
-	motorR.setSpeed(0);
-   
-	delay(250);  //decrease to optimize
-	
-	//mmSideCur = 500;
-	//mmSideLast = 500;
-	//now while loop just going straight until wall detected, then go to moving state
-	while(!wallFound){
-		//while wall not found, move forward. Find wall-->go to moving state; hopefully updates fast enough to catch the edge then loses it to go into turning_right again
-		//if it doesn't see a lost edge, then it's just a 90deg turn and MOVING can take over
-		motorL.setSpeed(speedLstraight-20);
-		motorR.setSpeed(speedRstraight-20);
-		pingSide();
-		delay(50);
-
-		pingFront(); //hopefully this won't interfere with the other b/c of the delay
-		if(mmFrontCur < 100)
+	// float[] stopAts = new float[3];
+	float[] stopAts = {1.0, 2.0, 3.0};
+	for(int i=0; i<3; i++)
+	{
+		if(getDistTravelled() >= stopAts[i])
 		{
-			STATE = TURNING_LEFT; // for safety
-			return;
-		}
-
-		if(mmSideCur < 300){
-			//detect close edge, go to moving
-			//pingSide();
-			//delay(10);
-			//pingSide();
-			//mmSideCur = 500;
-			//mmSideLast = 500;
-			STATE = MOVING;
-			//LASTSTATE = TURNING_RIGHT;
-			//delay(400);
-			return;
+			int delayTimeMS = 20000; // 20 seconds
+			delay(delayTimeMS);
 		}
 	}
-}
 
-void findWall()
-{
-	/*
+	//TODO: CHECK FOR WHEN TO CHANGE STATES
 	
-	*/
 }
-
-int usTOmm(long microseconds)
-{
-	return (int)(microseconds / 5.8);  //29 uS per cm, so 2.9 uS per mm; (uS/2.9)/2 = uS/5.8; cast to int, units in mm as whole numbers
-}
-
-int frontMM()
-{
-	return usTOmm(ping(FRONTPING)); 
-}
-
-int sideMM()
-{
-	return usTOmm(ping(SIDEPING)); 
-}
+*/
