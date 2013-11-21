@@ -42,8 +42,8 @@ const int minAdjust = 10;
 int adjustL;  //speed adjustment; function of diff between side ping readings
 int adjustR;
 
-int LEFT_INT = 0;
-int RIGHT_INT = 1;
+int LEFT_INT = A0;
+int RIGHT_INT = A1;
 
 void setup()
 {
@@ -156,9 +156,14 @@ void moveForward(float dist)
 
 	while(1)
 	{
+                //Serial.println("while");
+                Serial.print("L: " );
+                Serial.println(angularVelocityDiffL);
+                Serial.print("R: " );
+                Serial.println(angularVelocityDiffR);
 		if((angularVelocityDiffL) - (angularVelocityDiffR) != 0)
 		{
-			//shouldn't happen, fix it!
+//			Serial.println("testing");
 
 
 			//TODO: replace mmSideIdeal
