@@ -135,6 +135,10 @@ unsigned long currTimeR = 0;
 unsigned long lastTimeR = 0;
 unsigned long angularVelocityDiffL = 0;
 unsigned long angularVelocityDiffR = 0;
+long velocityDiff = 0;
+
+int mintmp = 0;
+int maxtmp = 0;
 
 void moveForward(float dist)
 {
@@ -156,39 +160,51 @@ void moveForward(float dist)
 
 	while(1)
 	{
+		velocityDiff = angularVelocityDiffL - angularVelocityDiffR;
                 //Serial.println("while");
-                Serial.print("L: " );
-                Serial.println(angularVelocityDiffL);
-                Serial.print("R: " );
-                Serial.println(angularVelocityDiffR);
-		if((angularVelocityDiffL) - (angularVelocityDiffR) != 0)
+//                Serial.print("angularVelocityDiffL: " );
+//                Serial.println(angularVelocityDiffL);
+//                Serial.print("angularVelocityDiffR: " );
+//                Serial.println(angularVelocityDiffR);
+                Serial.println(velocityDiff);
+
+                if(countL > 100){
+                maxtmp = max(maxtmp, velocityDiff);
+                mintmp = min(mintmp, velocityDiff);
+                }
+                //[-35,45]
+//                Serial.println(countL);
+//                Serial.print("min: ");
+//                Serial.print(mintmp);
+//                Serial.print(", max: ");
+//                Serial.println(maxtmp);
+//                Serial.
+		if(velocityDiff > 5 || velocity < -5) //if diff in velocity is > 5ms
 		{
-//			Serial.println("testing");
-
-
-			//TODO: replace mmSideIdeal
-			//this is not used
-			mmIdealMiss = mmSideIdeal - mmSideCur;  //supposed to be used to proportionately adjust distance from wall
+                        Serial.print("velocityDiff ");
+			Serial.println(velocityDiff);
 
 			//Replace side diff with amount off
-			if(sideDiff < 0){  //cur-last < 0 means getting closer to wall, slow down left wheel
-				adjustL = map(-sideDiff, 1, 8, minAdjust, maxAdjust);   //have to adjust in_max according to PINGTIME. shorter time between pings = less possible max distance traveled
+			if(velocityDiff < 0){  //cur-last < 0 means getting closer to wall, slow down left wheel
+                                Serial.println("velocityDiff < 0");
+				adjustL = map(-velocityDiff, -100, 0, minAdjust, maxAdjust);   //have to adjust in_max according to PINGTIME. shorter time between pings = less possible max distance traveled
 				if(adjustL > maxAdjust) adjustL = maxAdjust;  //if sideDiff > in_max, adjustL could be set very high, so cap at 30 manually
 				speedL = speedLstraight - adjustL;
 				
-				adjustR = map(-sideDiff, 1, 8, minAdjust, maxAdjust);
+				adjustR = map(-velocityDiff, 0, 100, minAdjust, maxAdjust);
 				if(adjustR > maxAdjust) adjustR = maxAdjust;
 				speedR = speedRstraight + adjustR;
 				
 				motorL.setSpeed(speedL);
 				motorR.setSpeed(speedR);  //less than ideal speed, speed back up to optimal
 			}
-			else if(sideDiff > 0){
-				adjustR = map(sideDiff, 1, 8, minAdjust, maxAdjust);  //in_max of 8 is from observational measurements
+			else if(velocityDiff > 0){
+                                Serial.println("velocityDiff > 0");
+				adjustR = map(velocityDiff, 0, 100, minAdjust, maxAdjust);  //in_max of 8 is from observational measurements
 				if(adjustR > maxAdjust) adjustR = maxAdjust;
 				speedR = speedRstraight - adjustR;
 				
-				adjustL = map(sideDiff, 1, 8, minAdjust, maxAdjust);
+				adjustL = map(velocityDiff, -100, 0, minAdjust, maxAdjust);
 				if(adjustL > maxAdjust) adjustL = maxAdjust;
 				speedL = speedLstraight + adjustL;
 				
@@ -230,6 +246,13 @@ void countLeft()
 	lastTimeL = currTimeL;
 	currTimeL = millis();
 	angularVelocityDiffL = currTimeL - lastTimeL;
+//        Serial.print("left ticks: ");
+//        Serial.println(countL);
+
+//        Serial.print("left: ");
+//        Serial.print(angularVelocityDiffL);
+//        Serial.print("right: ");
+//        Serial.println(angularVelocityDiffR);
 }
 void countRight()
 {
@@ -237,6 +260,8 @@ void countRight()
 	lastTimeR = currTimeR;
 	currTimeR = millis();
 	angularVelocityDiffR = currTimeR - lastTimeR;
+//        Serial.print("right ticks: ");
+//        Serial.println(countR);
 }
 
 //float getLeftDistTravelled()
