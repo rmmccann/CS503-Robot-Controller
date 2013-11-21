@@ -127,8 +127,19 @@ void loop()
 //global variables
 int countL = 0;
 int countR = 0;
+int botDiameter = 76;
 float sectorsPerMM = 1; //TODO: need to find the actual value
 float acceptable_difference = 1; //TODO: need a logical value here
+float radius_b = 457.2;
+float radius_d = 304.8;
+float radius_f = 304.8;
+float length_b = 1436.2;
+float length_d = 478.5;
+float length_f = 957;
+float arcRight = 0;
+float arcLeft = 0;
+float lengthStripe = 9.98;
+float speedRatio = 0;
 unsigned long currTimeL = 0;
 unsigned long lastTimeL = 0;
 unsigned long currTimeR = 0;
@@ -214,21 +225,59 @@ void moveForward(float dist)
 		}
 	}
 }
-void turnLeft(float dist, float radius)
+/*void turnLeft(float radius, int degree)
 {
 	resetCounters();
 
 	//TODO: set motor speeds
-
+        arcLeft = 0;
+        arcRight = 0;
+        SpeedRatio = 0;
+       	resetCounters();
+        if(degree==180)
+        {
+          arcRight = (radius + botDiameter/2)* 3.14;
+          arcLeft = (radius - botDiameter/2)* 3.14;
+          speedRatio = (arcLeft/arcRight);
+        }
+        
+        if(degree==90)
+        {
+          arcRight = (radius + botDiameter/2)* 3.14/2;
+          arcLeft = (radius _ botDiameter/2)* 3.14/2;
+          speedRatio = (arcLeft/arcRight);
+        }  
+        
 	while(1)
 	{
 		//TODO
 	}
 }
-void turnRight(float dist, float radius)
+void turnRight(float radius, int degree)
 {
-	resetCounters();
+        resetcounters();
+        arcLeft = 0;
+        arcRight = 0;
+        SpeedRatio = 0;
+       	resetCounters();
+        if(degree==180)
+        {
+          arcRight = (radius - botDiameter/2)* 3.14;
+          arcLeft = (radius + botDiameter/2)* 3.14;
+          speedRatio = (arcRight/arcLeft);
+        }
+        
+        if(degree==90)
+        {
+          arcRight = (radius - botDiameter/2)* 3.14/2;
+          arcLeft = (radius + botDiameter/2)* 3.14/2;
+          speedRatio = (arcRight/arcLeft);
+        }  
+    
+          
+        
 }
+*/
 void stopAt(float dist)
 {
 	//TODO
