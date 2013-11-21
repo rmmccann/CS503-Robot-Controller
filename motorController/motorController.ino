@@ -244,7 +244,7 @@ void moveForward(float dist)
         if(degree==90)
         {
           arcRight = (radius + botDiameter/2)* 3.14/2;
-          arcLeft = (radius _ botDiameter/2)* 3.14/2;
+          arcLeft = (radius - botDiameter/2)* 3.14/2;
           speedRatio = (arcLeft/arcRight);
         }  
         
