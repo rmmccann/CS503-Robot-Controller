@@ -179,7 +179,7 @@ void moveForward(float dist)
 //                Serial.print(", max: ");
 //                Serial.println(maxtmp);
 //                Serial.
-		if(velocityDiff > 5 || velocity < -5) //if diff in velocity is > 5ms
+		if(velocityDiff > 5 || velocityDiff < -5) //if diff in velocity is > 5ms
 		{
                         Serial.print("velocityDiff ");
 			Serial.println(velocityDiff);
@@ -187,11 +187,11 @@ void moveForward(float dist)
 			//Replace side diff with amount off
 			if(velocityDiff < 0){  //cur-last < 0 means getting closer to wall, slow down left wheel
                                 Serial.println("velocityDiff < 0");
-				adjustL = map(-velocityDiff, -100, 0, minAdjust, maxAdjust);   //have to adjust in_max according to PINGTIME. shorter time between pings = less possible max distance traveled
+				adjustL = map(-velocityDiff, -120, 0, minAdjust, maxAdjust);   //have to adjust in_max according to PINGTIME. shorter time between pings = less possible max distance traveled
 				if(adjustL > maxAdjust) adjustL = maxAdjust;  //if sideDiff > in_max, adjustL could be set very high, so cap at 30 manually
 				speedL = speedLstraight - adjustL;
 				
-				adjustR = map(-velocityDiff, 0, 100, minAdjust, maxAdjust);
+				adjustR = map(-velocityDiff, 0, 120, minAdjust, maxAdjust);
 				if(adjustR > maxAdjust) adjustR = maxAdjust;
 				speedR = speedRstraight + adjustR;
 				
@@ -200,11 +200,11 @@ void moveForward(float dist)
 			}
 			else if(velocityDiff > 0){
                                 Serial.println("velocityDiff > 0");
-				adjustR = map(velocityDiff, 0, 100, minAdjust, maxAdjust);  //in_max of 8 is from observational measurements
+				adjustR = map(velocityDiff, 0, 120, minAdjust, maxAdjust);  //in_max of 8 is from observational measurements
 				if(adjustR > maxAdjust) adjustR = maxAdjust;
 				speedR = speedRstraight - adjustR;
 				
-				adjustL = map(velocityDiff, -100, 0, minAdjust, maxAdjust);
+				adjustL = map(velocityDiff, -120, 0, minAdjust, maxAdjust);
 				if(adjustL > maxAdjust) adjustL = maxAdjust;
 				speedL = speedLstraight + adjustL;
 				
