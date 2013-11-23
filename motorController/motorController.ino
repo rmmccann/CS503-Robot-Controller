@@ -20,7 +20,7 @@ AF_DCMotor motorL(1);  //TODO just testing different frequencies; will be quiete
 AF_DCMotor motorR(2);
 
 int speedLstraight = 90;  //approximate values to go straight
-int speedRstraight = 99;
+int speedRstraight = 105;  //original 99
 int speedL = speedLstraight;
 int speedR = speedRstraight;
 
@@ -36,7 +36,7 @@ int mmSideLast = 0;
 int frontDiff = 0;  //calculated immediately following ping readings for moving state
 int sideDiff = 0;
 
-const int maxAdjust = 80;  //maximum adjustment for re-aligning robot; turns quickly enough and won't stall
+const int maxAdjust = 120;  //maximum adjustment for re-aligning robot; turns quickly enough and won't stall
 const int minAdjust = 10;
 //idea is that the bigger diff in side pings, the more of an adjustment needs to be made, and vice versa
 int adjustL;  //speed adjustment; function of diff between side ping readings
@@ -161,12 +161,12 @@ void moveForward(float dist)
 	while(1)
 	{
 		velocityDiff = angularVelocityDiffL - angularVelocityDiffR;
-                //Serial.println("while");
-//                Serial.print("angularVelocityDiffL: " );
-//                Serial.println(angularVelocityDiffL);
-//                Serial.print("angularVelocityDiffR: " );
-//                Serial.println(angularVelocityDiffR);
-                Serial.println(velocityDiff);
+
+                Serial.print("angularVelocityDiffL: " );
+                Serial.println(angularVelocityDiffL);
+                Serial.print("angularVelocityDiffR: " );
+                Serial.println(angularVelocityDiffR);
+//                Serial.println(velocityDiff);
 
                 if(countL > 100){
                 maxtmp = max(maxtmp, velocityDiff);
@@ -179,7 +179,7 @@ void moveForward(float dist)
 //                Serial.print(", max: ");
 //                Serial.println(maxtmp);
 //                Serial.
-		if(velocityDiff > 5 || velocityDiff < -5) //if diff in velocity is > 5ms
+		if(velocityDiff != 0) //if diff in velocity is > 5ms
 		{
                         Serial.print("velocityDiff ");
 			Serial.println(velocityDiff);
@@ -187,29 +187,43 @@ void moveForward(float dist)
 			//Replace side diff with amount off
 			if(velocityDiff < 0){  //cur-last < 0 means getting closer to wall, slow down left wheel
                                 Serial.println("velocityDiff < 0");
-				adjustL = map(-velocityDiff, -120, 0, minAdjust, maxAdjust);   //have to adjust in_max according to PINGTIME. shorter time between pings = less possible max distance traveled
+				adjustL = map(-velocityDiff, 1, 8, minAdjust, maxAdjust);   //have to adjust in_max according to PINGTIME. shorter time between pings = less possible max distance traveled
 				if(adjustL > maxAdjust) adjustL = maxAdjust;  //if sideDiff > in_max, adjustL could be set very high, so cap at 30 manually
-				speedL = speedLstraight - adjustL;
+//				speedL = speedLstraight - adjustL;
+                                speedL -= adjustL;
 				
-				adjustR = map(-velocityDiff, 0, 120, minAdjust, maxAdjust);
+				adjustR = map(-velocityDiff, 1, 8, minAdjust, maxAdjust);
 				if(adjustR > maxAdjust) adjustR = maxAdjust;
-				speedR = speedRstraight + adjustR;
+//				speedR = speedRstraight + adjustR;
+                                speedR += adjustR;
 				
 				motorL.setSpeed(speedL);
 				motorR.setSpeed(speedR);  //less than ideal speed, speed back up to optimal
+                                
+                                Serial.print("adjustL: ");
+                                Serial.print(adjustL);
+                                Serial.print(" adjstR: ");
+                                Serial.print(adjustR);
 			}
 			else if(velocityDiff > 0){
                                 Serial.println("velocityDiff > 0");
-				adjustR = map(velocityDiff, 0, 120, minAdjust, maxAdjust);  //in_max of 8 is from observational measurements
+				adjustR = map(velocityDiff, 1, 8, minAdjust, maxAdjust);  //in_max of 8 is from observational measurements
 				if(adjustR > maxAdjust) adjustR = maxAdjust;
-				speedR = speedRstraight - adjustR;
+//				speedR = speedRstraight - adjustR;
+                                speedR -= adjustR;
 				
-				adjustL = map(velocityDiff, -120, 0, minAdjust, maxAdjust);
+				adjustL = map(velocityDiff, 1, 8, minAdjust, maxAdjust);
 				if(adjustL > maxAdjust) adjustL = maxAdjust;
-				speedL = speedLstraight + adjustL;
+//				speedL = speedLstraight + adjustL;
+                                speedL += adjustL;
 				
 				motorR.setSpeed(speedR);
 				motorL.setSpeed(speedL);
+
+                                Serial.print("adjustL: ");
+                                Serial.print(adjustL);
+                                Serial.print(" adjstR: ");
+                                Serial.print(adjustR);
 			}
 		}
 	}
@@ -301,4 +315,14 @@ void checkDistance()
 	//TODO: CHECK FOR WHEN TO CHANGE STATES
 	
 }
+*/
+
+/*
+int x, x_last, delta_s, s_l, s_r, theta, delta_theta, R, theta_next, y, y_last
+
+delta_s = (s_l+s_r)/2;
+delta_theta = (s_r - s_l)/R;
+theta_next = theta + delta_theta;
+x = x_last + delta_s*cos(theta+(delta_theta/2));
+y = y_last + delta_s*sin(theta+(delta_theta/2));
 */
