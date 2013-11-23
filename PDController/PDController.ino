@@ -11,8 +11,6 @@ of the Serial Monitor window in the Arduino IDE to match that rate or else you
 will only see gibberish.
 */
 
-//hi, test
-
 #include <AFMotor.h>
 
 //make interrupt handler faster by telling it that there will be no interrupts on ports B or D (analog pins 0-5 are all on port C on the ATMega328P chip)
@@ -29,7 +27,6 @@ will only see gibberish.
 
 #define NUMSEG 24 //number of black segments on the encoder wheel (just used to test counting number of wheel rotations in this example
 #define DIAMETER 76 // diameter of each wheel
-#define WIDTH 125 // width of the vehicle, or distance between two rear wheels
 #define RESOLUTION 15 // resolution of current sector 15 degrees
 
 //variables to store the number of falling edges seen by the sensors in the interrupts (eg: counts how many times it sees a black->white transition)
@@ -40,8 +37,6 @@ volatile long rcount = 0;
 int rrotation = 0;
 int lrotation = 0;
 
-//odometry for both wheels
-
 //time entry
 unsigned long timeCurL = 0;
 unsigned long timeLastL = 0;
@@ -51,53 +46,30 @@ unsigned long timeLastR = 0;
 unsigned long timeLastLastR = 0;
 
 // initialization
-float forwardRefL = 91;    // start pwm speed for left wheel; reference speed for move forward of left wheel 
-float forwardRefR = 102;    // start pwm speed for right wheel; reference speed for moving forward of right wheel
-float PWM_CurL = forwardRefL;
-float PWM_CurR = forwardRefR;
+long PWM_RefL = 89;    // start pwm speed for left wheel
+long PWM_RefR = 103;    // start pwm speed for right wheel
+long PWM_CurL = PWM_RefL;
+long PWM_CurR = PWM_RefR;
  
-// update variables for vehicle velocities of both wheels
-float disCurL;          // current distance of left wheel
-float disCurR;          // current distance of right wheel
-float disLastL = 0;        // last distance of left wheel
-float disLastR = 0;        // last distance of right wheel
-float velCurL;          // Current velocity of left wheel
-float velCurR;          // Current velocity of right wheel
-float velLastL = 0;         // Last velocity of left wheel
-float velLastR = 0;         // Last velocity of right wheel
-float accCurL;          // Current acceleration of left wheel
-float accCurR;          // Current acceleration of right wheel  
-float errDis;           // error of current distance of both wheels
-float errVel;           // error of current velocity of both wheels
-float errVelDiff;       // error of current acceleration of both wheels
+// updated variables
+long disCurL;          // current distance of left wheel
+long disCurR;          // current distance of right wheel
+long disLastL = 0;        // last distance of left wheel
+long disLastR = 0;        // last distance of right wheel
+long velCurL;          // Current velocity of left wheel
+long velCurR;          // Current velocity of right wheel
+long velLastL = 0;         // Last velocity of left wheel
+long velLastR = 0;         // Last velocity of right wheel
+long accCurL;          // Current acceleration of left wheel
+long accCurR;          // Current acceleration of right wheel
+long errVel;           // error of current velocity for both wheels
+long errVelDiff;       // error of current acceleration for both wheels
 long PWM_NextR;        // Current velocity error for right wheel
 long PWM_NextL;        // Current velocity error for left wheel
 
-//reference PWM speed for both sides turning of both wheels 
-long turnRightRefR = 60;
-long turnRightRefL = 79;
-long turnLeftRefR = 90;
-long turnLeftRefL = 60;
-
-// define the coordinate of the robot (x, y, theta)
-float curX;
-float curY;
-float curTheta;
-// coordinate need to be updated
-float lastX = 0;
-float lastY = 0;
-float lastTheta = 0;
-float deltaS;
-float deltaSR = 0;
-float deltaSL = 0;
-float deltaTheta = 0;
-
-//define the control parameters 
-float kd = 4; //1st derivative of heading errors correct factor 0.5
-float kp = 2; //2nd derivative of heading errors correct factor 0.03
-float ki = 2; // heading error correct factor 1
-
-//distance for loops
+//define the control parameters
+float kd = 0.5;
+float kp = 0.05;
 
 AF_DCMotor left(1);
 AF_DCMotor right(2);
@@ -116,17 +88,17 @@ void setup(){
   PCintPort::attachInterrupt(RIGHTINT, &rightInterrupt, FALLING);
   
   //start the left motor and get it running slowly
-//  left.run(FORWARD);
-//  left.setSpeed(255);
-//  delay(25);
-  left.setSpeed(forwardRefL);
+  left.run(FORWARD);
+ // left.setSpeed(255);
+ // delay(25);
+  left.setSpeed(PWM_RefL);
   
   
   //start the right motor, get it running faster so show that the interrupts are watching each wheel separately
-//  right.run(FORWARD);
+  right.run(FORWARD);
 //  right.setSpeed(255);
-//  delay(25);
-  right.setSpeed(forwardRefR);
+ // delay(25);
+  right.setSpeed(PWM_RefR);
   
   
   //set serial port to run at 115200 bps so less time is spent doing prints
@@ -137,92 +109,20 @@ void setup(){
 
 void loop(){
   while(1){
-  if(disCurR < 3352 || disCurL < 3352){ // A
-      moveForward();
-      break;
-  }
-/*
-  if (disCurR < 3972 || disCurL < 4984){  // B
-      turnRight();
-      break;
-  }
-
-  if(disCurR < 5191 || disCurL < 6203) {  // C
-      moveForward ();
-      break;
-  }
-  
- // stopAt();
-  if(disCurR < 5768 && disCurL < 6583) {  //D
-      turnLeft ();
-      break;
-  }
-
-  if (disCurR < 7596 && disCurL < 8411){  //E
-      moveForward();
-      break;
-  }
-
-  if(disCurR < 8750 && disCurL < 9172) {  //F
-      turnLeft ();
-      break;
-  }
-
-  if (disCurR < 12712 && disCurL < 13134){   //G
-      moveForward();
-      break;
-  }*/
-
-  }
-/*
-  //print a message once per revolution of either wheel then reset counter
-  if(rcount == NUMSEG){
-     Serial.print("Right wheel made full rotation # ");
-     Serial.println(++rrotation);  //increment then print the right rotation counter
-     rcount = 0;
-  }
-  if(lcount == NUMSEG){
-     Serial.print("Left wheel made full rotation # ");
-     Serial.println(++lrotation);  //increment then print the left rotation counter
-     lcount = 0;
-  }*/
-}
-
-void turnRight(){
-  left.setSpeed(turnRightRefL);
-  right.setSpeed(turnRightRefR);
-}
-void turnLeft(){
-  left.setSpeed(turnLeftRefL);
-  right.setSpeed(turnLeftRefR);
-}
-
-void moveForward(){
-  PDController(forwardRefL,forwardRefR);
-}
-
-void PDController(long PWM_RefL, long PWM_RefR){
-  
-    if ((velCurL - velCurR != 0) || errVelDiff != 0 ||errDis != 0){
-      //Compute distance, velocity errors and acceleration errors of both wheels
-      errDis = disCurL - disCurR;
+    if (velCurL - velCurR != 0 || errVelDiff != 0){
+      //Compute velocity errors and acceleration errors of both wheels
       errVel = velCurL - velCurR;
       errVelDiff = accCurL - accCurR;
-
       Serial.print("left wheel current velocity = ");
       Serial.println(velCurL);
       Serial.print("right wheel current velocity = ");
       Serial.println(velCurR);
-      Serial.print("error of wheel distance = ");
-      Serial.println(errDis);
       Serial.print("error of wheel velocity = ");
-      Serial.println(errVel);      
-      Serial.print("error of wheel acceleration = ");
-      Serial.println(errVelDiff);
+      Serial.println(errVel);
       
       // Feedback error and generate new PWM on both wheels
-      PWM_NextL = PWM_RefL - kp*errVel - kd*errVelDiff - ki*errDis;
-      PWM_NextR = PWM_RefR + kp*errVel + kd*errVelDiff + ki*errDis;
+      PWM_NextL = PWM_RefL - kp*errVel - kd*errVelDiff;
+      PWM_NextR = PWM_RefR + kp*errVel + kd*errVelDiff;
       left.setSpeed(PWM_NextL);
       right.setSpeed(PWM_NextR);
       
@@ -238,24 +138,26 @@ void PDController(long PWM_RefL, long PWM_RefR){
     }
     
     PWM_CurL = PWM_NextL;
-    PWM_CurR = PWM_NextR;  
+    PWM_CurR = PWM_NextR;
+  }
+/*
+  //print a message once per revolution of either wheel then reset counter
+  if(rcount == NUMSEG){
+     Serial.print("Right wheel made full rotation # ");
+     Serial.println(++rrotation);  //increment then print the right rotation counter
+     rcount = 0;
+  }
+  if(lcount == NUMSEG){
+     Serial.print("Left wheel made full rotation # ");
+     Serial.println(++lrotation);  //increment then print the left rotation counter
+     lcount = 0;
+  }*/
 }
 
-void stopAt(){
- left.setSpeed(0);
- right.setSpeed(0); 
-}
 //the functions called 
 void rightInterrupt(){
   rcount++;
-  // update coordinate
-  disCurR = disLastR + 0.04167*(float)(DIAMETER)*PI;
-  deltaSR = disCurR - disLastR;
-  deltaS = 0.5*(deltaSR+deltaSL);
-  deltaTheta = (deltaSR - deltaSL)/(float)WIDTH;
-  curX = lastX + deltaS*cos(lastTheta + 0.5*deltaTheta);
-  curY = lastY + deltaS*sin(lastTheta + 0.5*deltaTheta);
-  
+  disCurR = disLastR + 0.04167*DIAMETER*PI;
   timeCurR = millis();
   velCurR = (disCurR - disLastR)*1000/(timeCurR - timeLastR);  // mm/s
   accCurR = (velCurR - velLastR)/ (timeCurR - timeLastLastR); 
@@ -278,21 +180,11 @@ void rightInterrupt(){
   if (rcount%2 == 0){
     timeLastLastR = timeCurR;
   }
-  lastX = curX;
-  lastY = curY;
-  lastTheta = curTheta;
 }
 
 void leftInterrupt(){
   lcount++;
-    // update coordinate
-  disCurL = disLastL + 0.04167*(float)(DIAMETER)*PI;
-  deltaSL = disCurL - disLastL;
-  deltaS = 0.5*(deltaSR+deltaSL);
-  deltaTheta = (deltaSR - deltaSL)/(float)WIDTH;
-  curX = lastX + deltaS*cos(lastTheta + 0.5*deltaTheta);
-  curY = lastY + deltaS*sin(lastTheta + 0.5*deltaTheta);
-  
+  disCurL = disLastL + 0.04167*DIAMETER*PI;
   timeCurL = millis();
   velCurL = (disCurL - disLastL)*1000/(timeCurL - timeLastL);
   accCurL = (velCurL - velLastL)/ (timeCurL - timeLastLastL);
