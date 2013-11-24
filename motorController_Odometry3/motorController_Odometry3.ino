@@ -11,8 +11,6 @@ of the Serial Monitor window in the Arduino IDE to match that rate or else you
 will only see gibberish.
 */
 
-//hi, test
-
 #include <AFMotor.h>
 
 //make interrupt handler faster by telling it that there will be no interrupts on ports B or D (analog pins 0-5 are all on port C on the ATMega328P chip)
@@ -26,6 +24,9 @@ will only see gibberish.
 //the pins that will be watching for interrupt signals
 #define LEFTINT A0
 #define RIGHTINT A1
+
+#define LEFT_LED A3
+#define RIGHT_LED A5
 
 #define NUMSEG 24 //number of black segments on the encoder wheel (just used to test counting number of wheel rotations in this example
 #define DIAMETER 76 // diameter of each wheel
@@ -115,6 +116,15 @@ float speedRatio = 0;
 float lastDis = 0;
 float nextDis = length_a;
 
+//total distances to the end of each section of the course
+float dist_a = length_a;
+float dist_b = dist_a + length_b;
+float dist_c = dist_b + length_c;
+float dist_d = dist_c + length_d;
+float dist_e = dist_d + length_e;
+float dist_f = dist_e + length_f;
+float dist_g = dist_f + length_g;
+
 
 AF_DCMotor left(1);
 AF_DCMotor right(2);
@@ -145,6 +155,22 @@ void setup(){
 //  delay(25);
   right.setSpeed(forwardRefR);
   
+//  pinMode(LEFT_LED, OUTPUT);
+//  pinMode(RIGHT_LED, OUTPUT);
+//  digitalWrite(LEFT_LED, HIGH);
+//  digitalWrite(RIGHT_LED, HIGH);
+  
+  //setup leds
+  	pinMode(A4, OUTPUT);
+	pinMode(A5, OUTPUT);
+	pinMode(A2, OUTPUT);
+	pinMode(A3, OUTPUT);
+	digitalWrite(A2, LOW);
+	digitalWrite(A3, LOW);
+	digitalWrite(A4, LOW);
+	digitalWrite(A5, LOW);
+
+//        digitalWrite(A5, HIGH);
   
   //set serial port to run at 115200 bps so less time is spent doing prints
   //make sure to choose the corresponding baud rate in the bottom right of the Arduino IDE's serial monitor or else it will just show gibberish
@@ -154,54 +180,53 @@ void setup(){
 
 void loop(){
   while(1){
-
-    if(lastDis < (disCurR+disCurL)/2 < nextDis ){ // A
+    Serial.print("lastDis: ");
+    Serial.println(lastDis);
+    Serial.print("nextDis: ");
+    Serial.println(nextDis);
+    Serial.print("current distance: ");
+    Serial.println((disCurR+disCurL)/2);
+    
+    if(0 < (disCurR+disCurL)/2 && (disCurR+disCurL)/2 < dist_a){ // A
+      Serial.println("AAAA");
+      digitalWrite(RIGHT_LED, LOW);
       moveForward();
       break;
-  }
-  lastDis = nextDis;
-  nextDis = lastDis + length_b;
-
-  if (lastDis <= (disCurR + disCurL)/2 < nextDis){  // B
-      turnRight(radius_b,180);
-      break;
-  }
-  lastDis = nextDis;
-  nextDis = lastDis + length_c;
-
-  if(lastDis <= (disCurR + disCurL)/2 < nextDis) {  // C
-      moveForward ();
-      break;
-  }
-  lastDis = nextDis;
-  nextDis = lastDis + length_d; 
+    }
   
- // stopAt();
-  if(lastDis<=(disCurR+disCurL)/2 < nextDis) {  //D
-      turnLeft (radius_d, 180);
-      break;
-  }
-  lastDis = nextDis;
-  nextDis = lastDis + length_e;
-
-  if (lastDis<=(disCurR+disCurL)/2 < nextDis){  //E
-      moveForward();
-      break;
-  }
-  lastDis = nextDis;
-  nextDis = lastDis + length_f;
+    if (dist_a <= (disCurR + disCurL)/2 < dist_b){  // B
+        
+        Serial.println("BBBB");
+        digitalWrite(RIGHT_LED, HIGH);
+        turnRight(radius_b,180);
+        break;
+    }
   
-  if(lastDis<=(disCurR+disCurL)/2 < nextDis) {  //F
-      turnLeft (radius_f,180);
-      break;
-  }
-  lastDis = nextDis;
-  nextDis = lastDis + length_g;
+    if(dist_b <= (disCurR + disCurL)/2 < dist_c) {  // C
+        moveForward ();
+        break;
+    }
+    
+   // stopAt();
+    if(dist_c <=(disCurR+disCurL)/2 < dist_d) {  //D
+        turnLeft (radius_d, 180);
+        break;
+    }
   
-  if (lastDis<=(disCurR+disCurL)/2 < nextDis){   //G
-      moveForward();
-      break;
-  }
+    if (dist_d <=(disCurR+disCurL)/2 < dist_e){  //E
+        moveForward();
+        break;
+    }
+    
+    if(dist_e <=(disCurR+disCurL)/2 < dist_f) {  //F
+        turnLeft (radius_f,180);
+        break;
+    }
+    
+    if (dist_f <=(disCurR+disCurL)/2 < dist_g){   //G
+        moveForward();
+        break;
+    }
 
   }
 /*
@@ -283,16 +308,16 @@ void PDController(long PWM_RefL, long PWM_RefR, float speedRatio){
       errVel = velCurL*speedRatio - velCurR;
       errVelDiff = accCurL*speedRatio - accCurR;
 
-      Serial.print("left wheel current velocity = ");
-      Serial.println(velCurL);
-      Serial.print("right wheel current velocity = ");
-      Serial.println(velCurR);
-      Serial.print("error of wheel distance = ");
-      Serial.println(errDis);
-      Serial.print("error of wheel velocity = ");
-      Serial.println(errVel);      
-      Serial.print("error of wheel acceleration = ");
-      Serial.println(errVelDiff);
+//      Serial.print("left wheel current velocity = ");
+//      Serial.println(velCurL);
+//      Serial.print("right wheel current velocity = ");
+//      Serial.println(velCurR);
+//      Serial.print("error of wheel distance = ");
+//      Serial.println(errDis);
+//      Serial.print("error of wheel velocity = ");
+//      Serial.println(errVel);      
+//      Serial.print("error of wheel acceleration = ");
+//      Serial.println(errVelDiff);
       
       // Feedback error and generate new PWM on both wheels
       PWM_NextL = PWM_RefL - (kp*errVel - kd*errVelDiff - ki*errDis);
