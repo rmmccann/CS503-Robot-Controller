@@ -56,7 +56,7 @@ float forwardRefL = 91;    // start pwm speed for left wheel; reference speed fo
 float forwardRefR = 102;    // start pwm speed for right wheel; reference speed for moving forward of right wheel
 float PWM_CurL = forwardRefL;
 float PWM_CurR = forwardRefR;
- 
+
 // update variables for vehicle velocities of both wheels
 float disCurL;          // current distance of left wheel
 float disCurR;          // current distance of right wheel
@@ -104,16 +104,15 @@ boolean usedLastInterrupt = false;  //so that PDController isn't called multiple
 
 //distance for loops
 //odometer
-//float length_a = 3352.8;  //original
-float length_a = 914.4;
-//float radius_b = 457.2;
-float radius_b = 304.8;
+float length_a = 3352.8;  //original
+float radius_b = 457.2;  //original
 float length_c = 1219.2;
 float radius_d = 304.8;
 float length_e = 1828.8;
 float radius_f = 304.8;
 float length_g = 3962.4;
 float length_b = 1436.2;
+//float length_b  = 478.8;  //new length B for 90deg right turn using radius_b
 float length_d = 478.5;
 float length_f = 957;
 float arcRight = 0;
@@ -129,7 +128,6 @@ float dist_d = dist_c + length_d;
 float dist_e = dist_d + length_e;
 float dist_f = dist_e + length_f;
 float dist_g = dist_f + length_g;
-
 
 AF_DCMotor left(1);
 AF_DCMotor right(2);
@@ -159,7 +157,7 @@ void setup(){
 //  right.setSpeed(255);
 //  delay(25);
   right.setSpeed(forwardRefR);
-  
+
   //setup leds
   pinMode(A4, OUTPUT);
 	pinMode(A5, OUTPUT);
@@ -174,6 +172,10 @@ void setup(){
   //make sure to choose the corresponding baud rate in the bottom right of the Arduino IDE's serial monitor or else it will just show gibberish
   Serial.begin(115200);
   Serial.println("~~~~~~~~~~~~~BEGIN~~~~~~~~~~~~~");
+    while(lcount < 3 && rcount < 3)
+  {
+    //just let it go straight with forwardRef values until a few interrupts happen so that the calculations are representative without cold-start initialized values causing large errors
+  }
 }
 
 void loop()
@@ -242,6 +244,7 @@ void turnLeft(float radius, int degree)
         arcRight = 0;
         speedRatio = 0;
 
+        //TODO: speedRatio doesn't depend on degree of turn.
         if(degree==180)
         {
           arcRight = (radius + WIDTH/2)* PI;
@@ -296,17 +299,6 @@ void PDController(long PWM_RefL, long PWM_RefR, float speedRatio){
       errDis = disCurL*speedRatio - disCurR;
       errVel = velCurL*speedRatio - velCurR;
       errVelDiff = accCurL*speedRatio - accCurR;
-
-//      Serial.print("left wheel current velocity = ");
-//      Serial.println(velCurL);
-//      Serial.print("right wheel current velocity = ");
-//      Serial.println(velCurR);
-//      Serial.print("error of wheel distance = ");
-//      Serial.println(errDis);
-//      Serial.print("error of wheel velocity = ");
-//      Serial.println(errVel);      
-//      Serial.print("error of wheel acceleration = ");
-//      Serial.println(errVelDiff);
       
       // Feedback error and generate new PWM on both wheels
       
@@ -316,13 +308,15 @@ void PDController(long PWM_RefL, long PWM_RefR, float speedRatio){
       //setSpeed takes type uint8_t
       if(PWM_NextL > 255)
         PWM_NextL = 255;
-      else if(PWM_NextL < 0)
+      else if(PWM_NextL < 0){
         PWM_NextL = 0;
+      }
         
       if(PWM_NextR > 255)
         PWM_NextR = 255;
-      else if(PWM_NextR < 0)
+      else if(PWM_NextR < 0){
         PWM_NextR = 0;
+      }
       
       left.setSpeed(PWM_NextL);
       right.setSpeed(PWM_NextR);
@@ -340,6 +334,28 @@ void PDController(long PWM_RefL, long PWM_RefR, float speedRatio){
     
     PWM_CurL = PWM_NextL;
     PWM_CurR = PWM_NextR;
+}
+
+void stopBot()
+{
+  //quickly stop moving and then do nothing
+  left.run(BACKWARD);
+  right.run(BACKWARD);
+  left.setSpeed(175);
+  right.setSpeed(175);
+  delay(50);
+  left.setSpeed(0);
+  right.setSpeed(0);
+  left.run(FORWARD);
+  right.run(FORWARD);
+  Serial.println("");
+  Serial.print("Thinks it has gone ");
+  Serial.print((disCurR+disCurL)/2);
+  Serial.println(" mm");
+  delay(2000);
+  left.setSpeed(forwardRefL);
+  right.setSpeed(forwardRefR);
+  delay(75);
 }
 
 void stopAt(){
@@ -360,17 +376,6 @@ void rightInterrupt(){
   timeCurR = millis();
   velCurR = (disCurR - disLastR)*1000/(timeCurR - timeLastR);  // mm/s
   accCurR = (velCurR - velLastR)/ (timeCurR - timeLastLastR); 
-  
-//  Serial.print("Right wheel made full rotation # ");
-//  Serial.println(rcount); 
-//  Serial.print("Right wheel current displacement # ");
-//  Serial.println(disCurR);
-//  Serial.print("Right wheel last displacement # ");
-//  Serial.println(disLastR);
-//  Serial.print("Right wheel current velocity # ");
-//  Serial.println(velCurR);
-//  Serial.print("Right wheel current time # ");
-//  Serial.println(timeCurR);
 
   // update variables
   timeLastR = timeCurR;
