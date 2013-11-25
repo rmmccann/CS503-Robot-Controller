@@ -21,6 +21,8 @@ will only see gibberish.
 //now include the PinChangeInt library
 #include <PinChangeInt.h>
 
+#include <stdarg.h>
+
 //the pins that will be watching for interrupt signals
 #define LEFTINT A0
 #define RIGHTINT A1
@@ -112,9 +114,6 @@ float arcRight = 0;
 float arcLeft = 0;
 float lengthStripe = 9.95;
 float speedRatio = 0;
-// temptation distance
-float lastDis = 0;
-float nextDis = length_a;
 
 //total distances to the end of each section of the course
 float dist_a = length_a;
@@ -155,13 +154,8 @@ void setup(){
 //  delay(25);
   right.setSpeed(forwardRefR);
   
-//  pinMode(LEFT_LED, OUTPUT);
-//  pinMode(RIGHT_LED, OUTPUT);
-//  digitalWrite(LEFT_LED, HIGH);
-//  digitalWrite(RIGHT_LED, HIGH);
-  
   //setup leds
-  	pinMode(A4, OUTPUT);
+  pinMode(A4, OUTPUT);
 	pinMode(A5, OUTPUT);
 	pinMode(A2, OUTPUT);
 	pinMode(A3, OUTPUT);
@@ -169,8 +163,6 @@ void setup(){
 	digitalWrite(A3, LOW);
 	digitalWrite(A4, LOW);
 	digitalWrite(A5, LOW);
-
-//        digitalWrite(A5, HIGH);
   
   //set serial port to run at 115200 bps so less time is spent doing prints
   //make sure to choose the corresponding baud rate in the bottom right of the Arduino IDE's serial monitor or else it will just show gibberish
@@ -178,83 +170,57 @@ void setup(){
   Serial.println("~~~~~~~~~~~~~BEGIN~~~~~~~~~~~~~");
 }
 
-void loop(){
-  while(1){
-    Serial.print("lastDis: ");
-    Serial.println(lastDis);
-    Serial.print("nextDis: ");
-    Serial.println(nextDis);
+void loop()
+{
+    float currentDist = (disCurR+disCurL)/2;
     Serial.print("current distance: ");
-    Serial.println((disCurR+disCurL)/2);
+    Serial.println(currentDist);
+    Serial.print("dist_a: ");
+    Serial.println(dist_a);
     
-    if(0 < (disCurR+disCurL)/2 && (disCurR+disCurL)/2 < dist_a){ // A
+    if(0 < currentDist && currentDist < dist_a) {  // A
       Serial.println("AAAA");
       digitalWrite(RIGHT_LED, LOW);
       moveForward();
-      break;
+//      turnLeft(radius_d, 90);
+//      turnRight(radius_d, 90);
     }
   
-    if (dist_a <= (disCurR + disCurL)/2 < dist_b){  // B
-        
+    else if(dist_a <= currentDist && currentDist < dist_b) {  // B
         Serial.println("BBBB");
         digitalWrite(RIGHT_LED, HIGH);
         turnRight(radius_b,180);
-        break;
     }
   
-    if(dist_b <= (disCurR + disCurL)/2 < dist_c) {  // C
+    else if(dist_b <= currentDist && currentDist < dist_c) {  // C
+        Serial.println("CCCC");
         moveForward ();
-        break;
     }
     
    // stopAt();
-    if(dist_c <=(disCurR+disCurL)/2 < dist_d) {  //D
-        turnLeft (radius_d, 180);
-        break;
+    else if(dist_c <= currentDist && currentDist < dist_d) {  // D
+        Serial.println("DDDD");
+        turnLeft (radius_d, 90);
     }
   
-    if (dist_d <=(disCurR+disCurL)/2 < dist_e){  //E
+    else if(dist_d <= currentDist && currentDist < dist_e) {  // E
         moveForward();
-        break;
     }
     
-    if(dist_e <=(disCurR+disCurL)/2 < dist_f) {  //F
+    else if(dist_e <= currentDist && currentDist < dist_f) {  // F
         turnLeft (radius_f,180);
-        break;
     }
     
-    if (dist_f <=(disCurR+disCurL)/2 < dist_g){   //G
+    else if(dist_f <= currentDist && currentDist < dist_g) {  // G
         moveForward();
-        break;
     }
 
-  }
-/*
-  //print a message once per revolution of either wheel then reset counter
-  if(rcount == NUMSEG){
-     Serial.print("Right wheel made full rotation # ");
-     Serial.println(++rrotation);  //increment then print the right rotation counter
-     rcount = 0;
-  }
-  if(lcount == NUMSEG){
-     Serial.print("Left wheel made full rotation # ");
-     Serial.println(++lrotation);  //increment then print the left rotation counter
-     lcount = 0;
-  }*/
 }
-
-/*
-void turnRight(){
-  left.setSpeed(turnRightRefL);
-  right.setSpeed(turnRightRefR);
-}
-void turnLeft(){
-  left.setSpeed(turnLeftRefL);
-  right.setSpeed(turnLeftRefR);
-}*/
 
 void turnLeft(float radius, int degree)
 {
+        digitalWrite(LEFT_LED, HIGH);
+        
         //TODO: set motor speeds
         arcLeft = 0;
         arcRight = 0;
@@ -273,10 +239,14 @@ void turnLeft(float radius, int degree)
           speedRatio = (arcRight/arcLeft);
         }
         PDController(turnLeftRefL,turnLeftRefR,speedRatio);
+        Serial.print("speed ratio = ");
+        Serial.println(speedRatio);
 }
 
 void turnRight(float radius, int degree)
 {
+        digitalWrite(RIGHT_LED, HIGH);
+        
         arcLeft = 0;
         arcRight = 0;
         speedRatio = 0;
@@ -298,6 +268,9 @@ void turnRight(float radius, int degree)
 }
 
 void moveForward(){
+  digitalWrite(LEFT_LED, LOW);
+  digitalWrite(RIGHT_LED, LOW);
+//  PDController(forwardRefL,forwardRefR,.00001);
   PDController(forwardRefL,forwardRefR,1);
 }
 
@@ -326,10 +299,10 @@ void PDController(long PWM_RefL, long PWM_RefR, float speedRatio){
       right.setSpeed(PWM_NextR);
       
       //print result
-//      Serial.print("left wheel velocity = ");
-//      Serial.println(PWM_NextL);
-//      Serial.print("right wheel velocity = ");
-//      Serial.println(PWM_NextR);  
+      Serial.print("left wheel velocity = ");
+      Serial.println(PWM_NextL);
+      Serial.print("right wheel velocity = ");
+      Serial.println(PWM_NextR);  
     }  
     else{
       PWM_NextL = PWM_CurL;
@@ -403,4 +376,13 @@ void leftInterrupt(){
   if (rcount%2 == 0){
     timeLastLastL = timeCurL;
   } 
+}
+
+void printf(char *fmt, ... ){
+        char tmp[128]; // resulting string limited to 128 chars
+        va_list args;
+        va_start (args, fmt );
+        vsnprintf(tmp, 128, fmt, args);
+        va_end (args);
+        Serial.print(tmp);
 }
