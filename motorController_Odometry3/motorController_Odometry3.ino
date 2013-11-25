@@ -133,8 +133,10 @@ AF_DCMotor left(1);
 AF_DCMotor right(2);
 
 void setup(){
+  Serial.begin(115200);
+  Serial.println("~~~~~~~~~~~~~BEGIN~~~~~~~~~~~~~");
   //Note: setup interrupt pins before running motors so all wheel movement is accounted for
-  
+ 
   //attach left wheel sensor pin to interrupt, as well as which function to call when an interrupt is triggered on this pin
   pinMode(LEFTINT, INPUT);
   digitalWrite(LEFTINT, LOW);
@@ -160,7 +162,7 @@ void setup(){
 
   //setup leds
   pinMode(A4, OUTPUT);
-	pinMode(A5, OUTPUT);
+  	pinMode(A5, OUTPUT);
 	pinMode(A2, OUTPUT);
 	pinMode(A3, OUTPUT);
 	digitalWrite(A2, LOW);
@@ -170,9 +172,8 @@ void setup(){
   
   //set serial port to run at 115200 bps so less time is spent doing prints
   //make sure to choose the corresponding baud rate in the bottom right of the Arduino IDE's serial monitor or else it will just show gibberish
-  Serial.begin(115200);
-  Serial.println("~~~~~~~~~~~~~BEGIN~~~~~~~~~~~~~");
-    while(lcount < 3 && rcount < 3)
+
+  while(lcount < 2 && rcount < 2)
   {
     //just let it go straight with forwardRef values until a few interrupts happen so that the calculations are representative without cold-start initialized values causing large errors
   }
