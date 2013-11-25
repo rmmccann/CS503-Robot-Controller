@@ -98,10 +98,16 @@ float kd = 4; //1st derivative of heading errors correct factor 0.5
 float kp = 2; //2nd derivative of heading errors correct factor 0.03
 float ki = 0; // heading error correct factor 1
 
+//flags for debug statements
+boolean usedLastInterrupt = false;  //so that PDController isn't called multiple times between interrupts (doing so would cause it to calculate the same error adjustment multiple times
+                                    //+for the same last/current state of the robot which would likely swing the adjustment of the PWMs to the extremes between interrupts which is incorrect
+
 //distance for loops
 //odometer
-float length_a = 3352.8;
-float radius_b = 457.2;
+//float length_a = 3352.8;  //original
+float length_a = 914.4;
+//float radius_b = 457.2;
+float radius_b = 304.8;
 float length_c = 1219.2;
 float radius_d = 304.8;
 float length_e = 1828.8;
@@ -172,11 +178,19 @@ void setup(){
 
 void loop()
 {
+  if(usedLastInterrupt == false){  //haven't used data generated in last interrupt, so recalculate things now and set usedLastInterrupt to true so that it won't get calculated again until new data about the robot's state is determined
+    usedLastInterrupt = true;
     float currentDist = (disCurR+disCurL)/2;
     Serial.print("current distance: ");
     Serial.println(currentDist);
-    Serial.print("dist_a: ");
-    Serial.println(dist_a);
+    if(currentDist > dist_a) {
+      Serial.print("dist_b: ");
+      Serial.println(dist_b);
+    }
+    else{
+      Serial.print("dist_a: ");
+      Serial.println(dist_a);
+    }
     
     if(0 < currentDist && currentDist < dist_a) {  // A
       Serial.println("AAAA");
@@ -214,6 +228,8 @@ void loop()
     else if(dist_f <= currentDist && currentDist < dist_g) {  // G
         moveForward();
     }
+
+  }//end of usedLastInterrupt flag-checking if statement
 
 }
 
@@ -293,8 +309,21 @@ void PDController(long PWM_RefL, long PWM_RefR, float speedRatio){
 //      Serial.println(errVelDiff);
       
       // Feedback error and generate new PWM on both wheels
+      
       PWM_NextL = PWM_RefL - (kp*errVel - kd*errVelDiff - ki*errDis);
       PWM_NextR = PWM_RefR + (kp*errVel + kd*errVelDiff + ki*errDis);
+      //bounds checking PWMs so that expected value of 0-255 goes to setSpeed.
+      //setSpeed takes type uint8_t
+      if(PWM_NextL > 255)
+        PWM_NextL = 255;
+      else if(PWM_NextL < 0)
+        PWM_NextL = 0;
+        
+      if(PWM_NextR > 255)
+        PWM_NextR = 255;
+      else if(PWM_NextR < 0)
+        PWM_NextR = 0;
+      
       left.setSpeed(PWM_NextL);
       right.setSpeed(PWM_NextR);
       
@@ -303,14 +332,14 @@ void PDController(long PWM_RefL, long PWM_RefR, float speedRatio){
       Serial.println(PWM_NextL);
       Serial.print("right wheel velocity = ");
       Serial.println(PWM_NextR);  
-    }  
+    }
     else{
       PWM_NextL = PWM_CurL;
       PWM_NextR = PWM_CurR;
     }
     
     PWM_CurL = PWM_NextL;
-    PWM_CurR = PWM_NextR;  
+    PWM_CurR = PWM_NextR;
 }
 
 void stopAt(){
@@ -353,6 +382,8 @@ void rightInterrupt(){
   lastX = curX;
   lastY = curY;
   lastTheta = curTheta;
+  
+  usedLastInterrupt = false;   //new interrupt happening now, so next time main loop runs through, allow PDController to run once to generate new error accumulations
 }
 
 void leftInterrupt(){
@@ -376,6 +407,7 @@ void leftInterrupt(){
   if (rcount%2 == 0){
     timeLastLastL = timeCurL;
   } 
+  usedLastInterrupt = false;   //new interrupt happening now, so next time main loop runs through, allow PDController to run once to generate new error accumulations
 }
 
 void printf(char *fmt, ... ){
