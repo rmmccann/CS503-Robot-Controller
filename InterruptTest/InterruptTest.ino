@@ -25,6 +25,12 @@ will only see gibberish.
 #define LEFTINT A0
 #define RIGHTINT A1
 
+#define TPL 2  //test points for toggling digital pin to verify encoders
+#define TPR 1
+
+int TPLstate = LOW;
+int TPRstate = LOW;
+
 #define NUMSEG 24 //number of black segments on the encoder wheel (just used to test counting number of wheel rotations in this example
 
 //variables to store the number of falling edges seen by the sensors in the interrupts (eg: counts how many times it sees a black->white transition)
@@ -55,19 +61,25 @@ void setup(){
   left.run(FORWARD);
   left.setSpeed(255);
   delay(25);
-  left.setSpeed(40);
+  left.setSpeed(255);
   
   //start the right motor, get it running faster so show that the interrupts are watching each wheel separately
   right.run(FORWARD);
   right.setSpeed(255);
   delay(25);
-  right.setSpeed(100);
+  right.setSpeed(255);
   
   
   //set serial port to run at 115200 bps so less time is spent doing prints
   //make sure to choose the corresponding baud rate in the bottom right of the Arduino IDE's serial monitor or else it will just show gibberish
   Serial.begin(115200);
   Serial.println("~~~~~~~~~~~~~BEGIN~~~~~~~~~~~~~");
+  
+  pinMode(TPL, OUTPUT);
+  pinMode(TPR, OUTPUT);
+  digitalWrite(TPL, TPLstate);
+  digitalWrite(TPR, TPRstate);
+  
 }
 
 void loop(){
@@ -87,8 +99,24 @@ void loop(){
 //the functions called 
 void rightInterrupt(){
   rcount++;
+  if(TPRstate == LOW){
+    digitalWrite(TPR, HIGH);
+    TPRstate = 1;
+  }
+  else {
+    digitalWrite(TPR, LOW);
+    TPRstate = 0;
+  }
 }
 
 void leftInterrupt(){
   lcount++;
+  if(TPLstate == 0){
+    digitalWrite(TPL, HIGH);
+    TPLstate = 1;
+  }
+  else{
+    digitalWrite(TPL, LOW);
+    TPLstate = 0;
+  }
 }

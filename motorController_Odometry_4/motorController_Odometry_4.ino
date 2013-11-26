@@ -30,12 +30,9 @@ will only see gibberish.
 #define LEFT_LED A3
 #define RIGHT_LED A5
 
-#define TPL 1
-#define TPR 2
-
 #define NUMSEG 24 //number of black segments on the encoder wheel (just used to test counting number of wheel rotations in this example
-#define DIAMETER 76 // diameter of each wheel
-#define WIDTH 125 // width of the vehicle, or distance between two rear wheels
+#define DIAMETER 76.00 // diameter of each wheel
+#define WIDTH 125.00 // width of the vehicle, or distance between two rear wheels
 #define RESOLUTION 15 // resolution of current sector 15 degrees
 
 //variables to store the number of falling edges seen by the sensors in the interrupts (eg: counts how many times it sees a black->white transition)
@@ -55,8 +52,8 @@ unsigned long timeLastR = 0;
 unsigned long timeLastLastR = 0;
 
 // initialization
-float forwardRefL = 91;    // start pwm speed for left wheel; reference speed for move forward of left wheel 
-float forwardRefR = 102;    // start pwm speed for right wheel; reference speed for moving forward of right wheel
+float forwardRefL = 90;    // start pwm speed for left wheel; reference speed for move forward of left wheel 
+float forwardRefR = 105;    // start pwm speed for right wheel; reference speed for moving forward of right wheel
 float PWM_CurL = forwardRefL;
 float PWM_CurR = forwardRefR;
 
@@ -98,8 +95,8 @@ float deltaTheta = 0;
 
 //define the control parameters 
 float kd = 4; //1st derivative of heading errors correct factor 0.5
-float kp = 2; //2nd derivative of heading errors correct factor 0.03
-float ki = 0; // heading error correct factor 1
+float kp = 3; //2nd derivative of heading errors correct factor 0.03
+float ki = 0; // heading error correct factor 0.5
 
 //flags for debug statements
 boolean usedLastInterrupt = false;  //so that PDController isn't called multiple times between interrupts (doing so would cause it to calculate the same error adjustment multiple times
@@ -107,21 +104,79 @@ boolean usedLastInterrupt = false;  //so that PDController isn't called multiple
 
 //distance for loops
 //odometer
-float length_a = 3352.8;  //original
-float radius_b = 457.2;  //original
-float length_c = 1219.2;
-float radius_d = 304.8;
-float length_e = 1828.8;
-float radius_f = 304.8;
-float length_g = 3962.4;
-float length_b = 1436.2;
-//float length_b  = 478.8;  //new length B for 90deg right turn using radius_b
-float length_d = 478.5;
-float length_f = 957;
+#define length_a (3352.8 - 20)  //original 3352.8
+#define radius_b (457.2 - 5)  //original
+#define length_c (1219.2 + 90)
+#define radius_d (304.8 + 30)
+#define length_e (1828.8 - 150)
+#define radius_f (304.8 - 50)
+#define length_g 3962.4
+#define length_b radius_b*PI
+#define length_d 0.5*radius_d*PI
+#define length_f radius_f*PI
+#define length_bl (radius_b + WIDTH/2)*PI
+#define length_dl 0.5*(radius_d - WIDTH/2)*PI
+#define length_fl (radius_f - WIDTH/2)*PI
+#define length_br (radius_b - WIDTH/2)*PI
+#define length_dr 0.5*(radius_b + WIDTH/2)*PI
+#define length_fr (radius_b + WIDTH/2)*PI
+
+
 float arcRight = 0;
 float arcLeft = 0;
-float lengthStripe = 9.95;
+#define lengthStripe = 9.95;
 float speedRatio = 0;
+
+int state = 0;  //which segment it's currently on so it can use the distances for error correction
+float segmentDistances[7] = {
+   length_a,   //A
+   length_b,
+   length_c,
+   length_d,
+   length_e,
+   length_f,
+   length_g  //G
+};
+
+float segDistL[7] = {
+  length_a,
+  length_bl,
+  length_c,
+  length_dl,
+  length_e,
+  length_fl,
+  length_g
+};
+
+float segDistR[7] = {
+  length_a,
+  length_br,
+  length_c,
+  length_dr,
+  length_e,
+  length_fr,
+  length_g
+};
+
+float cumulativeL[7] = {
+ 0,
+ segDistL[0],
+ segDistL[0]+segDistL[1],
+ segDistL[0]+segDistL[1]+segDistL[2],
+ segDistL[0]+segDistL[1]+segDistL[2]+segDistL[3],
+ segDistL[0]+segDistL[1]+segDistL[2]+segDistL[3]+segDistL[4],
+ segDistL[0]+segDistL[1]+segDistL[2]+segDistL[3]+segDistL[4]+segDistL[5]
+};
+
+float cumulativeR[7] = {
+ 0,
+ segDistR[0],
+ segDistR[0]+segDistR[1],
+ segDistR[0]+segDistR[1]+segDistR[2],
+ segDistR[0]+segDistR[1]+segDistR[2]+segDistR[3],
+ segDistR[0]+segDistR[1]+segDistR[2]+segDistR[3]+segDistR[4],
+ segDistR[0]+segDistR[1]+segDistR[2]+segDistR[3]+segDistR[4]+segDistR[5]
+};
 
 //total distances to the end of each section of the course
 float dist_a = length_a;
@@ -134,6 +189,15 @@ float dist_g = dist_f + length_g;
 
 AF_DCMotor left(1);
 AF_DCMotor right(2);
+
+boolean firstStopped = false;  //so it knows if it has stopped yet
+float firstDist = 609.6; //mm into a given segment the stop point is
+
+boolean secondStopped = false;
+float secondDist = 210;
+
+boolean thirdStopped = false;
+float thirdDist = length_g;
 
 void setup(){
   Serial.begin(115200);
@@ -173,9 +237,6 @@ void setup(){
 	digitalWrite(A4, LOW);
 	digitalWrite(A5, LOW);
   
-  pinMode(TPL, OUTPUT);  //test point pins to 
-  pinMode(TPR, OUTPUT);
-  
   //set serial port to run at 115200 bps so less time is spent doing prints
   //make sure to choose the corresponding baud rate in the bottom right of the Arduino IDE's serial monitor or else it will just show gibberish
 
@@ -192,51 +253,74 @@ void loop()
     float currentDist = (disCurR+disCurL)/2;
     Serial.print("current distance: ");
     Serial.println(currentDist);
-    if(currentDist > dist_a) {
+/*    if(currentDist > dist_a) {
       Serial.print("dist_b: ");
       Serial.println(dist_b);
     }
     else{
       Serial.print("dist_a: ");
       Serial.println(dist_a);
-    }
+    }*/
     
     if(0 < currentDist && currentDist < dist_a) {  // A
       Serial.println("AAAA");
       digitalWrite(RIGHT_LED, LOW);
+      state = 0;
       moveForward();
 //      turnLeft(radius_d, 90);
 //      turnRight(radius_d, 90);
     }
   
     else if(dist_a <= currentDist && currentDist < dist_b) {  // B
+        state = 1;
         Serial.println("BBBB");
         digitalWrite(RIGHT_LED, HIGH);
         turnRight(radius_b,180);
     }
+    
   
     else if(dist_b <= currentDist && currentDist < dist_c) {  // C
+        state = 2;
+        if(!firstStopped && (currentDist > (dist_b + firstDist))) {
+          firstStopped = true;
+         stopBot();  //will full stop for a few sec, then just continue back into these loops
+        }
         Serial.println("CCCC");
         moveForward ();
     }
     
    // stopAt();
     else if(dist_c <= currentDist && currentDist < dist_d) {  // D
+        state = 3;
         Serial.println("DDDD");
         turnLeft (radius_d, 90);
     }
   
     else if(dist_d <= currentDist && currentDist < dist_e) {  // E
+        state = 4;
         moveForward();
     }
     
     else if(dist_e <= currentDist && currentDist < dist_f) {  // F
+        state = 5;
         turnLeft (radius_f,180);
     }
     
     else if(dist_f <= currentDist && currentDist < dist_g) {  // G
+        if(!secondStopped && (currentDist > (dist_f+secondDist))){
+          secondStopped = true;
+          stopBot();
+          
+        }
+        if(!thirdStopped && (currentDist > (dist_f+thirdDist))){
+          thirdStopped = true;
+          stopBot();
+          
+        }
+        state = 6;
         moveForward();
     }
+    Serial.println("");
 
   }//end of usedLastInterrupt flag-checking if statement
 
@@ -256,7 +340,7 @@ void turnLeft(float radius, int degree)
         {
           arcRight = (radius + WIDTH/2)* PI;
           arcLeft = (radius - WIDTH/2)* PI;
-          speedRatio = (arcLeft/arcRight);
+          speedRatio = (arcRight/arcLeft);
         }
         if(degree==90)
         {
@@ -301,9 +385,9 @@ void moveForward(){
 }
 
 void PDController(long PWM_RefL, long PWM_RefR, float speedRatio){
-    if ((velCurL*speedRatio / velCurR != 1) || errVelDiff != 0){ // ||(disCurL - disCurR != 0)){
+    if ((velCurL*speedRatio / velCurR != 1) || errVelDiff != 0  ||((disCurL-cumulativeL[state])*speedRatio / (disCurR-cumulativeR[state]) != 1)){
       //Compute distance, velocity errors and acceleration errors of both wheels
-      errDis = disCurL*speedRatio - disCurR;
+      errDis = (disCurL-cumulativeL[state])*speedRatio - (disCurR - cumulativeR[state]);
       errVel = velCurL*speedRatio - velCurR;
       errVelDiff = accCurL*speedRatio - accCurR;
       
@@ -313,6 +397,7 @@ void PDController(long PWM_RefL, long PWM_RefR, float speedRatio){
       PWM_NextR = PWM_RefR + (kp*errVel + kd*errVelDiff + ki*errDis);
       //bounds checking PWMs so that expected value of 0-255 goes to setSpeed.
       //setSpeed takes type uint8_t
+      
       if(PWM_NextL > 255)
         PWM_NextL = 255;
       else if(PWM_NextL < 0){
@@ -359,8 +444,8 @@ void stopBot()
   Serial.print("Thinks it has gone ");
   Serial.print((disCurR+disCurL)/2);
   Serial.println(" mm");
-  delay(2000);
-  left.setSpeed(forwardRefL);
+  delay(3000);
+  left.setSpeed(forwardRefL);  //go forward again, hppefully causing a few interrupts should let the PDcontroller take over again
   right.setSpeed(forwardRefR);
   delay(75);
 }
@@ -399,7 +484,6 @@ void rightInterrupt(){
 }
 
 void leftInterrupt(){
-  
   lcount++;
     // update coordinate
   disCurL = disLastL + 0.04167*(float)(DIAMETER)*PI;
