@@ -21,7 +21,9 @@ will only see gibberish.
 //now include the PinChangeInt library
 #include <PinChangeInt.h>
 
-#include <stdarg.h>
+#include <stdarg.h> //needed for printf
+
+#define LED A5
 
 //the pins that will be watching for interrupt signals
 #define LEFTINT A0
@@ -94,7 +96,7 @@ float forwardRefR = RSTRAIGHT;    // start pwm speed for right wheel; reference 
 float PWM_CurL = forwardRefL;
 float PWM_CurR = forwardRefR;
 
-float currentDist; //current cumulative distance of robot using left and right wheel distances in interrupts so it's asynchronosly up to date
+float currentDist; //current cumulative distance of robot using left and right wheel distances in interrupts so it's asynchronosly up to date. Unit: MM
 
 // update variables for vehicle velocities of both wheels
 float disCurL;          // current distance of left wheel
@@ -264,17 +266,11 @@ void setup(){
 //  delay(25);
   right.setSpeed(forwardRefR);
 
- /*
-  //setup leds
+  //setup led
   pinMode(A4, OUTPUT);
-  	pinMode(A5, OUTPUT);
-	pinMode(A2, OUTPUT);
-	pinMode(A3, OUTPUT);
-	digitalWrite(A2, LOW);
-	digitalWrite(A3, LOW);
+  pinMode(A5, OUTPUT);
 	digitalWrite(A4, LOW);
 	digitalWrite(A5, LOW);
-*/
   
   //set serial port to run at 115200 bps so less time is spent doing prints
   //make sure to choose the corresponding baud rate in the bottom right of the Arduino IDE's serial monitor or else it will just show gibberish
@@ -285,20 +281,24 @@ void setup(){
   }
 }
 
+float dist_a_mm = 5181.6; //mm == 17ft
+
 void loop()
 {
+  dist_a_mm = 914.4; //3ft
   if(usedLastInterrupt == false){  //haven't used data generated in last interrupt, so recalculate things now and set usedLastInterrupt to true so that it won't get calculated again until new data about the robot's state is determined
     usedLastInterrupt = true;
     Serial.print("current distance: ");
     Serial.println(currentDist);
     
-    if(0 < currentDist && currentDist < 5181.6) {  // go 17 ft
+    if(0 < currentDist && currentDist < dist_a_mm) {  // go 17 ft
       Serial.println("AAAA");
       //digitalWrite(RIGHT_LED, LOW);
       state = 0;
       moveForward();
     }
-    else if(5181.6 <= currentDist && currentDist < 3*5181.6) {
+    else if(dist_a_mm <= currentDist && currentDist < 3*dist_a_mm) {
+        digitalWrite(LED, HIGH);
         state = 1;
         //flush ping values so it initializes the values when it needs to do wall following
         pingSide();
@@ -311,6 +311,8 @@ void loop()
           wallFollow();
         }
         fullStop();
+        // state = NEXT_STATE;
+        // state++;
     }
     else if(dist_b <= currentDist && currentDist < dist_c) {  // C
         state = 2;
