@@ -239,6 +239,7 @@ void setup(){
   delay(5);
   pingFront();
   delay(5);
+
  
   //attach left wheel sensor pin to interrupt, as well as which function to call when an interrupt is triggered on this pin
   pinMode(LEFTINT, INPUT);
@@ -286,33 +287,30 @@ void setup(){
 
 void loop()
 {
-  
-  left.setSpeed(100);
-  right.setSpeed(0);
-  while(1){}
- 
-   while(currentDist < 914.4){
-     timeUpdate();  //update currentTime and update ping data if PINGTIME has passed
-     wallFollow();  //set left and right wheel speed using last two sets of ping data to go parallel
-   }
-   fullStop();
-  
   if(usedLastInterrupt == false){  //haven't used data generated in last interrupt, so recalculate things now and set usedLastInterrupt to true so that it won't get calculated again until new data about the robot's state is determined
     usedLastInterrupt = true;
     Serial.print("current distance: ");
     Serial.println(currentDist);
     
-    if(0 < currentDist && currentDist < dist_a) {  // A
+    if(0 < currentDist && currentDist < 5181.6) {  // go 17 ft
       Serial.println("AAAA");
       //digitalWrite(RIGHT_LED, LOW);
       state = 0;
       moveForward();
     }
-    else if(dist_a <= currentDist && currentDist < dist_b) {  // B
+    else if(5181.6 <= currentDist && currentDist < 3*5181.6) {
         state = 1;
-        Serial.println("BBBB");
-        //digitalWrite(RIGHT_LED, HIGH);
-        turnRight(radius_b);
+        //flush ping values so it initializes the values when it needs to do wall following
+        pingSide();
+        delay(5);
+        pingSide();
+        delay(5);
+        while(mmSideCur < 406.4){
+          //while right sensor sees within 16in (406.4mm) meaning that it's still in hallway
+          timeUpdate();
+          wallFollow();
+        }
+        fullStop();
     }
     else if(dist_b <= currentDist && currentDist < dist_c) {  // C
         state = 2;
