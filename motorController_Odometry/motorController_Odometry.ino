@@ -27,13 +27,50 @@ will only see gibberish.
 #define LEFTINT A0
 #define RIGHTINT A1
 
-#define LEFT_LED A3
-#define RIGHT_LED A5
-
 #define NUMSEG 24 //number of black segments on the encoder wheel (just used to test counting number of wheel rotations in this example
 #define DIAMETER 76.00 // diameter of each wheel
 #define WIDTH 125.00 // width of the vehicle, or distance between two rear wheels
 #define RESOLUTION 15 // resolution of current sector 15 degrees
+
+#define LSTRAIGHT 90
+#define RSTRAIGHT 105
+
+///////////////////////////////////
+//parallel wall following things
+///////////////////////////////////
+#define FRONTPING A2
+#define SIDEPING A3
+#define PINGTIME 75  //ms between ping reading updates  //at 300ms and L/R speeds of 90/99, will go at most 3cm closer to wall in that time assuming it stays within 45deg of wall
+
+const int MOVING = 0;
+const int TURNING_LEFT = 1;
+const int TURNING_RIGHT = 2;
+int speedLstraight = LSTRAIGHT;  //approximate values to go straight
+int speedRstraight = RSTRAIGHT;  //original 99
+int speedL = speedLstraight;
+int speedR = speedRstraight;
+
+
+int mmFrontCur = 0;  //ping distance history; use two distance readings to know how non-parallel robot is and which way to turn to correct
+int mmFrontLast = 0; //make sure to leave a little time between readings so enough distance change happens to be useful data
+
+int mmSideCur = 0;   //+not too long or robot will be far off course
+int mmSideLast = 0;
+
+int frontDiff = 0;  //calculated immediately following ping readings for moving state
+int sideDiff = 0;
+
+const int maxAdjust = 120;  //maximum adjustment for re-aligning robot; turns quickly enough and won't stall
+const int minAdjust = 10;
+
+int adjustL;  //speed adjustment; function of diff between side ping readings
+int adjustR;
+
+unsigned long lastTime = 0; //last time ping readings were taken; used to space out pings so that some distance will accumulate
+unsigned long curTime = 0;
+//////////////////////////////
+
+
 
 //variables to store the number of falling edges seen by the sensors in the interrupts (eg: counts how many times it sees a black->white transition)
 volatile long lcount = 0;
@@ -52,10 +89,12 @@ unsigned long timeLastR = 0;
 unsigned long timeLastLastR = 0;
 
 // initialization
-float forwardRefL = 90;    // start pwm speed for left wheel; reference speed for move forward of left wheel 
-float forwardRefR = 105;    // start pwm speed for right wheel; reference speed for moving forward of right wheel
+float forwardRefL = LSTRAIGHT;    // start pwm speed for left wheel; reference speed for move forward of left wheel 
+float forwardRefR = RSTRAIGHT;    // start pwm speed for right wheel; reference speed for moving forward of right wheel
 float PWM_CurL = forwardRefL;
 float PWM_CurR = forwardRefR;
+
+float currentDist; //current cumulative distance of robot using left and right wheel distances in interrupts so it's asynchronosly up to date
 
 // update variables for vehicle velocities of both wheels
 float disCurL;          // current distance of left wheel
@@ -79,19 +118,6 @@ long turnRightRefR = 60;
 long turnRightRefL = 79;
 long turnLeftRefR = 90;
 long turnLeftRefL = 60;
-
-// define the coordinate of the robot (x, y, theta)
-float curX;
-float curY;
-float curTheta;
-// coordinate need to be updated
-float lastX = 0;
-float lastY = 0;
-float lastTheta = 0;
-float deltaS;
-float deltaSR = 0;
-float deltaSL = 0;
-float deltaTheta = 0;
 
 //define the control parameters 
 float kd = 4; //1st derivative of heading errors correct factor 0.5
@@ -204,6 +230,16 @@ void setup(){
   Serial.println("~~~~~~~~~~~~~BEGIN~~~~~~~~~~~~~");
   //Note: setup interrupt pins before running motors so all wheel movement is accounted for
  
+  //initialize values for ping sensors, do this any time wall following code is used
+  pingSide();
+  delay(5);
+  pingSide();
+  delay(5);
+  pingFront();
+  delay(5);
+  pingFront();
+  delay(5);
+ 
   //attach left wheel sensor pin to interrupt, as well as which function to call when an interrupt is triggered on this pin
   pinMode(LEFTINT, INPUT);
   digitalWrite(LEFTINT, LOW);
@@ -227,6 +263,7 @@ void setup(){
 //  delay(25);
   right.setSpeed(forwardRefR);
 
+ /*
   //setup leds
   pinMode(A4, OUTPUT);
   	pinMode(A5, OUTPUT);
@@ -236,6 +273,7 @@ void setup(){
 	digitalWrite(A3, LOW);
 	digitalWrite(A4, LOW);
 	digitalWrite(A5, LOW);
+*/
   
   //set serial port to run at 115200 bps so less time is spent doing prints
   //make sure to choose the corresponding baud rate in the bottom right of the Arduino IDE's serial monitor or else it will just show gibberish
@@ -248,64 +286,56 @@ void setup(){
 
 void loop()
 {
+  
+  left.setSpeed(100);
+  right.setSpeed(0);
+  while(1){}
+ 
+   while(currentDist < 914.4){
+     timeUpdate();  //update currentTime and update ping data if PINGTIME has passed
+     wallFollow();  //set left and right wheel speed using last two sets of ping data to go parallel
+   }
+   fullStop();
+  
   if(usedLastInterrupt == false){  //haven't used data generated in last interrupt, so recalculate things now and set usedLastInterrupt to true so that it won't get calculated again until new data about the robot's state is determined
     usedLastInterrupt = true;
-    float currentDist = (disCurR+disCurL)/2;
     Serial.print("current distance: ");
     Serial.println(currentDist);
-/*    if(currentDist > dist_a) {
-      Serial.print("dist_b: ");
-      Serial.println(dist_b);
-    }
-    else{
-      Serial.print("dist_a: ");
-      Serial.println(dist_a);
-    }*/
     
     if(0 < currentDist && currentDist < dist_a) {  // A
       Serial.println("AAAA");
-      digitalWrite(RIGHT_LED, LOW);
+      //digitalWrite(RIGHT_LED, LOW);
       state = 0;
       moveForward();
-//      turnLeft(radius_d, 90);
-//      turnRight(radius_d, 90);
     }
-  
     else if(dist_a <= currentDist && currentDist < dist_b) {  // B
         state = 1;
         Serial.println("BBBB");
-        digitalWrite(RIGHT_LED, HIGH);
-        turnRight(radius_b,180);
+        //digitalWrite(RIGHT_LED, HIGH);
+        turnRight(radius_b);
     }
-    
-  
     else if(dist_b <= currentDist && currentDist < dist_c) {  // C
         state = 2;
         if(!firstStopped && (currentDist > (dist_b + firstDist))) {
           firstStopped = true;
-         stopBot();  //will full stop for a few sec, then just continue back into these loops
+          stopBot();  //will full stop for a few sec, then just continue back into these loops
         }
         Serial.println("CCCC");
         moveForward ();
     }
-    
-   // stopAt();
     else if(dist_c <= currentDist && currentDist < dist_d) {  // D
         state = 3;
         Serial.println("DDDD");
-        turnLeft (radius_d, 90);
+        turnLeft (radius_d);
     }
-  
     else if(dist_d <= currentDist && currentDist < dist_e) {  // E
         state = 4;
         moveForward();
     }
-    
     else if(dist_e <= currentDist && currentDist < dist_f) {  // F
         state = 5;
-        turnLeft (radius_f,180);
+        turnLeft (radius_f);
     }
-    
     else if(dist_f <= currentDist) {  // G
         state = 6;
         if(!secondStopped && (currentDist > (dist_f+secondDist))){
@@ -324,60 +354,131 @@ void loop()
 
 }
 
-void turnLeft(float radius, int degree)
+/*
+///////////////////////////
+Wall following functions
+///////////////////////////
+*/
+
+void timeUpdate()
 {
-        digitalWrite(LEFT_LED, HIGH);
-        
+  curTime = millis();
+  if(curTime - lastTime > PINGTIME) {
+    pingSide();
+    delay(10);
+    pingFront();
+    
+    lastTime = curTime;
+  }
+}
+
+void wallFollow()
+{
+          if(sideDiff == 0) return;
+          if(sideDiff < 0){  //cur-last < 0 means getting closer to wall, slow down left wheel
+            adjustL = map(-sideDiff, 1, 8, minAdjust, maxAdjust);   //have to adjust in_max according to PINGTIME. shorter time between pings = less possible max distance traveled
+            if(adjustL > maxAdjust)
+              adjustL = maxAdjust;  //if sideDiff > in_max, adjustL could be set very high, so cap at 30 manually
+            speedL = speedLstraight - adjustL;
+           
+            adjustR = map(-sideDiff, 1, 8, minAdjust, maxAdjust);
+            if(adjustR > maxAdjust)
+              adjustR = maxAdjust;
+            speedR = speedRstraight + adjustR;
+            
+            left.setSpeed(speedL);
+            right.setSpeed(speedR);
+          }
+          else if(sideDiff > 0){
+            adjustR = map(sideDiff, 1, 8, minAdjust, maxAdjust);  //in_max of 8 is from observational measurements
+            if(adjustR > maxAdjust)
+              adjustR = maxAdjust;
+            speedR = speedRstraight - adjustR;
+
+            adjustL = map(sideDiff, 1, 8, minAdjust, maxAdjust);
+            if(adjustL > maxAdjust)
+              adjustL = maxAdjust;
+            speedL = speedLstraight + adjustL;      
+            
+            right.setSpeed(speedR);
+            left.setSpeed(speedL);
+        }
+}
+
+void pingSide(){
+    mmSideLast = mmSideCur;
+    mmSideCur = sideMM();
+    sideDiff = mmSideCur - mmSideLast;
+}
+
+void pingFront(){
+    mmFrontLast = mmFrontCur;
+    mmFrontCur = frontMM();
+    frontDiff = mmFrontCur - mmFrontLast;
+}
+
+long ping(int pingPin)
+{
+  pinMode(pingPin, OUTPUT);
+  digitalWrite(pingPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(pingPin, HIGH);
+  delayMicroseconds(5);
+  digitalWrite(pingPin, LOW);
+
+  pinMode(pingPin, INPUT);
+  return pulseIn(pingPin, HIGH);  //returns 
+}
+
+int usTOmm(long microseconds) { return (int)(microseconds / 5.8); }  //29 uS per cm, so 2.9 uS per mm; (uS/2.9)/2 = uS/5.8; cast to int, units in mm as whole numbers
+
+int frontMM() { return usTOmm(ping(FRONTPING)); }
+
+int sideMM() { return usTOmm(ping(SIDEPING)); }
+
+/*
+////////////////////
+Odometry functions
+////////////////////
+*/
+
+void turnLeft(float radius)
+{
+        //digitalWrite(LEFT_LED, HIGH);
         //TODO: set motor speeds
         arcLeft = 0;
         arcRight = 0;
         speedRatio = 0;
 
-        //TODO: speedRatio doesn't depend on degree of turn.
-        if(degree==180)
-        {
-          arcRight = (radius + WIDTH/2)* PI;
-          arcLeft = (radius - WIDTH/2)* PI;
-          speedRatio = (arcRight/arcLeft);
-        }
-        if(degree==90)
-        {
-          arcRight = (radius + WIDTH/2)* PI/2;
-          arcLeft = (radius - WIDTH/2)* PI/2;
-          speedRatio = (arcRight/arcLeft);
-        }
+        arcRight = (radius + WIDTH/2)* PI;
+        arcLeft = (radius - WIDTH/2)* PI;
+        speedRatio = (arcRight/arcLeft);
+
         PDController(turnLeftRefL,turnLeftRefR,speedRatio);
         Serial.print("speed ratio = ");
         Serial.println(speedRatio);
 }
 
-void turnRight(float radius, int degree)
+void turnRight(float radius)
 {
-        digitalWrite(RIGHT_LED, HIGH);
+        //digitalWrite(RIGHT_LED, HIGH);
         
         arcLeft = 0;
         arcRight = 0;
         speedRatio = 0;
-        if(degree==180)
-        {
-          arcRight = (radius - WIDTH/2)* PI;
-          arcLeft = (radius + WIDTH/2)* PI;
-          speedRatio = (arcRight/arcLeft);
-        }
-        if(degree==90)
-        {
-          arcRight = (radius - WIDTH/2)* PI/2;
-          arcLeft = (radius + WIDTH/2)* PI/2;
-          speedRatio = (arcRight/arcLeft);
-        }  
+        
+        arcRight = (radius - WIDTH/2)* PI;
+        arcLeft = (radius + WIDTH/2)* PI;
+        speedRatio = (arcRight/arcLeft);
+
         PDController (turnRightRefL,turnRightRefR,speedRatio);
         Serial.print("speed ratio = ");
         Serial.println(speedRatio);
 }
 
 void moveForward(){
-  digitalWrite(LEFT_LED, LOW);
-  digitalWrite(RIGHT_LED, LOW);
+  //digitalWrite(LEFT_LED, LOW);
+  //digitalWrite(RIGHT_LED, LOW);
 //  PDController(forwardRefL,forwardRefR,.00001);
   PDController(forwardRefL,forwardRefR,1);
 }
@@ -393,20 +494,14 @@ void PDController(long PWM_RefL, long PWM_RefR, float speedRatio){
       
       PWM_NextL = PWM_RefL - (kp*errVel - kd*errVelDiff - ki*errDis);
       PWM_NextR = PWM_RefR + (kp*errVel + kd*errVelDiff + ki*errDis);
+      
       //bounds checking PWMs so that expected value of 0-255 goes to setSpeed.
       //setSpeed takes type uint8_t
-      
-      if(PWM_NextL > 255)
-        PWM_NextL = 255;
-      else if(PWM_NextL < 0){
-        PWM_NextL = 0;
-      }
+      PWM_NextL = max(PWM_NextL, 0);  //if pwmnextL < 0, max(pwmnextL, 0) will return 0; etc for the rest
+      PWM_NextL = min(255, PWM_NextL);
         
-      if(PWM_NextR > 255)
-        PWM_NextR = 255;
-      else if(PWM_NextR < 0){
-        PWM_NextR = 0;
-      }
+      PWM_NextR = max(PWM_NextR, 0);
+      PWM_NextR = min(255, PWM_NextR);
       
       left.setSpeed(PWM_NextL);
       right.setSpeed(PWM_NextR);
@@ -443,7 +538,7 @@ void stopBot()
   delay(30000);
   rcountcur = rcount;
   lcountcur = lcount;
-  left.setSpeed(forwardRefL);  //go forward again, hppefully causing a few interrupts should let the PDcontroller take over again
+  left.setSpeed(forwardRefL);  //go forward again, causing a few interrupts first before letting PDController take over again
   right.setSpeed(forwardRefR);
   while(((rcount - rcountcur) < 4) && ((lcount - lcountcur) < 4)){
     //just wait until each wheel gets a couple of interrupts before using PDController again --> basically the same method to start the robot in setup()
@@ -464,21 +559,10 @@ void fullStop()
   while(1){}
 }
 
-void stopAt(){
- left.setSpeed(0);
- right.setSpeed(0); 
-}
-//the functions called 
 void rightInterrupt(){
   rcount++;
-  // update coordinate
-  disCurR = disLastR + 0.04167*(float)(DIAMETER)*PI;
-  deltaSR = disCurR - disLastR;
-  deltaS = 0.5*(deltaSR+deltaSL);
-  deltaTheta = (deltaSR - deltaSL)/(float)WIDTH;
-  curX = lastX + deltaS*cos(lastTheta + 0.5*deltaTheta);
-  curY = lastY + deltaS*sin(lastTheta + 0.5*deltaTheta);
   
+  disCurR = disLastR + 0.04167*(float)(DIAMETER)*PI;
   timeCurR = millis();
   velCurR = (disCurR - disLastR)*1000/(timeCurR - timeLastR);  // mm/s
   accCurR = (velCurR - velLastR)/ (timeCurR - timeLastLastR); 
@@ -490,23 +574,14 @@ void rightInterrupt(){
   if (rcount%2 == 0){
     timeLastLastR = timeCurR;
   }
-  lastX = curX;
-  lastY = curY;
-  lastTheta = curTheta;
-  
+  currentDist = (disCurR+disCurL)/2;
   usedLastInterrupt = false;   //new interrupt happening now, so next time main loop runs through, allow PDController to run once to generate new error accumulations
 }
 
 void leftInterrupt(){
   lcount++;
-    // update coordinate
+
   disCurL = disLastL + 0.04167*(float)(DIAMETER)*PI;
-  deltaSL = disCurL - disLastL;
-  deltaS = 0.5*(deltaSR+deltaSL);
-  deltaTheta = (deltaSR - deltaSL)/(float)WIDTH;
-  curX = lastX + deltaS*cos(lastTheta + 0.5*deltaTheta);
-  curY = lastY + deltaS*sin(lastTheta + 0.5*deltaTheta);
-  
   timeCurL = millis();
   velCurL = (disCurL - disLastL)*1000/(timeCurL - timeLastL);
   accCurL = (velCurL - velLastL)/ (timeCurL - timeLastLastL);
@@ -518,6 +593,7 @@ void leftInterrupt(){
   if (rcount%2 == 0){
     timeLastLastL = timeCurL;
   } 
+  currentDist = (disCurR+disCurL)/2;
   usedLastInterrupt = false;   //new interrupt happening now, so next time main loop runs through, allow PDController to run once to generate new error accumulations
 }
 
