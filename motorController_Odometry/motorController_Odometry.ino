@@ -271,6 +271,8 @@ void setup(){
   pinMode(A5, OUTPUT);
 	digitalWrite(A4, LOW);
 	digitalWrite(A5, LOW);
+
+  digitalWrite(LED, HIGH);
   
   //set serial port to run at 115200 bps so less time is spent doing prints
   //make sure to choose the corresponding baud rate in the bottom right of the Arduino IDE's serial monitor or else it will just show gibberish
@@ -279,27 +281,36 @@ void setup(){
   {
     //just let it go straight with forwardRef values until a few interrupts happen so that the calculations are representative without cold-start initialized values causing large errors
   }
+
+  state = 0;
 }
 
 float dist_a_mm = 5181.6; //mm == 17ft
+float dist_b_mm = 11277.6;//37ft
 
 void loop()
 {
-  dist_a_mm = 914.4; //3ft
+//  dist_a_mm = 914.4; //3ft
+//  dist_b_mm = 3352.8; //11ft
   if(usedLastInterrupt == false){  //haven't used data generated in last interrupt, so recalculate things now and set usedLastInterrupt to true so that it won't get calculated again until new data about the robot's state is determined
     usedLastInterrupt = true;
     Serial.print("current distance: ");
     Serial.println(currentDist);
     
-    if(0 < currentDist && currentDist < dist_a_mm) {  // go 17 ft
-      Serial.println("AAAA");
-      //digitalWrite(RIGHT_LED, LOW);
-      state = 0;
-      moveForward();
-    }
-    else if(dist_a_mm <= currentDist && currentDist < 3*dist_a_mm) {
+    switch(state)
+    {
+      case 0:
+          Serial.println("STATE 0");
+            digitalWrite(LED, LOW);
+        if(0 < currentDist && currentDist < dist_a_mm)
+        {
+          moveForward();
+        }
+        else state++;
+        break;
+      case 1:
+        Serial.println("STATE 1");
         digitalWrite(LED, HIGH);
-        state = 1;
         //flush ping values so it initializes the values when it needs to do wall following
         pingSide();
         delay(5);
@@ -310,45 +321,29 @@ void loop()
           timeUpdate();
           wallFollow();
         }
-        fullStop();
-        // state = NEXT_STATE;
-        // state++;
-    }
-    else if(dist_b <= currentDist && currentDist < dist_c) {  // C
-        state = 2;
-        if(!firstStopped && (currentDist > (dist_b + firstDist))) {
-          firstStopped = true;
-          stopBot();  //will full stop for a few sec, then just continue back into these loops
+        // fullStop();
+        state++;
+      case 2:
+          Serial.println("STATE 2");
+          digitalWrite(LED, LOW);
+        if(currentDist < dist_b_mm)
+        {
+          moveForward();
         }
-        Serial.println("CCCC");
-        moveForward ();
+        else state++;
+        break;
+      case 3:
+        //turnRight();
+        fullStop();break;
+      case 4:
+        //go forward
+      case 5:
+        //turnAround();
+      case 6:
+      break;
+      default: fullStop();
+
     }
-    else if(dist_c <= currentDist && currentDist < dist_d) {  // D
-        state = 3;
-        Serial.println("DDDD");
-        turnLeft (radius_d);
-    }
-    else if(dist_d <= currentDist && currentDist < dist_e) {  // E
-        state = 4;
-        moveForward();
-    }
-    else if(dist_e <= currentDist && currentDist < dist_f) {  // F
-        state = 5;
-        turnLeft (radius_f);
-    }
-    else if(dist_f <= currentDist) {  // G
-        state = 6;
-        if(!secondStopped && (currentDist > (dist_f+secondDist))){
-          secondStopped = true;
-          stopBot();
-        }
-        if(!thirdStopped && (currentDist > (dist_f+thirdDist))){
-          thirdStopped = true;
-          stopBot();
-        }
-        moveForward();
-    }
-    Serial.println("");
 
   }//end of usedLastInterrupt flag-checking if statement
 
