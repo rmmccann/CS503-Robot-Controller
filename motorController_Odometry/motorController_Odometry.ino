@@ -36,6 +36,8 @@ will only see gibberish.
 
 #define LSTRAIGHT 90
 #define RSTRAIGHT 105
+//#define LSTRAIGHT 170
+//#define RSTRAIGHT 200
 
 ///////////////////////////////////
 //parallel wall following things
@@ -98,7 +100,10 @@ float PWM_CurR = forwardRefR;
 
 float currentDist; //current cumulative distance of robot using left and right wheel distances in interrupts so it's asynchronosly up to date. Unit: MM
 
-// update variables for vehicle velocities of both wheels
+//PING: update variables
+float sideErr = 0;
+
+//Encoder: update variables for vehicle velocities of both wheels
 float disCurL;          // current distance of left wheel
 float disCurR;          // current distance of right wheel
 float disLastL = 0;        // last distance of left wheel
@@ -115,20 +120,27 @@ float errVelDiff;       // error of current acceleration of both wheels
 long PWM_NextR;        // Current velocity error for right wheel
 long PWM_NextL;        // Current velocity error for left wheel
 
-//reference PWM speed for both sides turning of both wheels 
+//PING: reference distance for side PING
+float sideRef = 152.4; // 152.4 mm = 6 in
+
+//Encoder: reference PWM speed for both sides turning of both wheels 
 long turnRightRefR = 60;
 long turnRightRefL = 79;
 long turnLeftRefR = 90;
 long turnLeftRefL = 60;
 
-//define the control parameters 
-float kd = 4; //1st derivative of heading errors correct factor 0.5
-float kp = 3; //2nd derivative of heading errors correct factor 0.03
-float ki = 0; // heading error correct factor 0.5
+//Encoder: define the control parameters 
+float kd = 4; //1st derivative of heading errors correct factor
+float kp = 3; //2nd derivative of heading errors correct factor
+float ki = 0; //heading error correct factor, 0.5 for full battery
+float kd_sidePing = 25; //side Ping distance reading rate correct factor
+float kp_sidePing = 3; //side Ping distance reading correct factor
 
 //flags for debug statements
 boolean usedLastInterrupt = false;  //so that PDController isn't called multiple times between interrupts (doing so would cause it to calculate the same error adjustment multiple times
                                     //+for the same last/current state of the robot which would likely swing the adjustment of the PWMs to the extremes between interrupts which is incorrect
+boolean usedLastPing = false;
+
 
 //distance for loops
 //odometer
@@ -218,15 +230,6 @@ float dist_g = dist_f + length_g - 65.8;
 AF_DCMotor left(1);
 AF_DCMotor right(2);
 
-boolean firstStopped = false;  //so it knows if it has stopped yet
-float firstDist = 609.6 + 76.2; //609.6mm into a given segment the stop point is (add distance as necessary to adjust)
-
-boolean secondStopped = false;
-float secondDist = 210.0;
-
-boolean thirdStopped = false;
-float thirdDist = 3926.4 - 20;
-
 void setup(){
   Serial.begin(115200);
   Serial.println("~~~~~~~~~~~~~BEGIN~~~~~~~~~~~~~");
@@ -279,14 +282,23 @@ void setup(){
 
   while(lcount < 4 && rcount < 4)
   {
-    //just let it go straight with forwardRef values until a few interrupts happen so that the calculations are representative without cold-start initialized values causing large errors
+    //just let it go straight with forwardRef values until a few interrupts happen so that the calculations are representative withoutf cold-start initialized values causing large errors
   }
 
   state = 0;
 }
 
-float dist_a_mm = 5181.6; //mm == 17ft
-float dist_b_mm = 11277.6;//37ft
+//float dist_a_mm = 5181.6; //mm == 17ft
+//float dist_a_mm = 304;
+float dist_a_mm = 5384.8 + 152.4; //212in = 5384.8mm direct line distance from start line with right wheel on green tape to very entrance of ramp
+float dist_b_mm = 1524;//5ft, so it wall follows enough to get centered & straight, then uses moving forward code to do the rest
+float dist_c_mm = 3429; //11ft 3in
+float dist_d_mm = 457.2; ///1.5ft instead of 3 b/c consistent error to the right
+
+float refDist;
+float wallStartDist;
+
+boolean haveClearedOdometry = false;
 
 void loop()
 {
@@ -316,31 +328,111 @@ void loop()
         delay(5);
         pingSide();
         delay(5);
-        while(mmSideCur < 406.4){
-          //while right sensor sees within 16in (406.4mm) meaning that it's still in hallway
+        wallStartDist = currentDist;
+        while((currentDist - wallStartDist) < dist_b_mm - 76.2){
+          //once wall following starts, go dist_b_mm to get to near the end of the hallway
           timeUpdate();
-          wallFollow();
+          PDWallFollow();  //TODO PDWallFollow will apply error adjustments multiple times between ping updates = bad
         }
-        // fullStop();
+        clearOdometry();
+        while(currentDist < 76.2){
+         timeUpdate();
+         PDWallFollow(); 
+        }
         state++;
+        break;
       case 2:
-          Serial.println("STATE 2");
-          digitalWrite(LED, LOW);
-        if(currentDist < dist_b_mm)
+        digitalWrite(LED, LOW);
+        Serial.println("STATE 2");
+        timeUpdate();
+        if(mmSideCur < 406.4)  //just use moving forward code, check for loss of right wall for reference point
         {
           moveForward();
         }
-        else state++;
+        else {
+          state++;
+          refDist = currentDist;
+        }
         break;
       case 3:
-        //turnRight();
-        fullStop();break;
+        digitalWrite(LED, HIGH);
+        //once in this state, we should be about centered in the ramp hall, and have just seen the end of the right wall
+        if((currentDist - refDist) < dist_c_mm - 76.2){
+          moveForward();  //go 11ft 3in forward
+        }
+        else{
+          state++;
+          refDist = currentDist;
+        }
+        break;
       case 4:
-        //go forward
+        digitalWrite(LED, LOW);
+        turnRight90();
+        while((currentDist - refDist) < dist_d_mm){
+         moveForward(); 
+        }
+        
+        state++;
+        turnRight180();
+        refDist = currentDist;
+        break;
       case 5:
-        //turnAround();
+        while((currentDist - refDist) < dist_d_mm){
+         moveForward(); 
+        }
+        state++;
+        turnLeft90();
+        refDist = currentDist;
+        break;
       case 6:
-      break;
+        while((currentDist - refDist) < dist_c_mm){
+         moveForward(); 
+        }
+        state++;
+        break;
+      case 7:
+        pingSide();
+        delay(5);
+        pingSide();
+        delay(5);
+        wallStartDist = currentDist;
+        while((currentDist - wallStartDist) < dist_b_mm - 76.2){
+          //once wall following starts, go dist_b_mm to get to near the end of the hallway
+          timeUpdate();
+          PDWallFollow();  //TODO PDWallFollow will apply error adjustments multiple times between ping updates = bad
+        }
+        clearOdometry();
+        while(currentDist < 76.2){
+         timeUpdate();
+         PDWallFollow(); 
+        }
+        state++;
+        break;
+      case 8:
+        timeUpdate();
+        if(mmSideCur < 406.4)  //just use moving forward code, check for loss of right wall for reference point
+        {
+          moveForward();
+        }
+        else {
+          state++;
+          refDist = currentDist;
+        }
+        break;
+      case 9:
+        while((currentDist - refDist) < dist_a_mm + 609.6){ //609.6 = 2ft further than original 17ft
+           moveForward(); 
+        }
+        turnRight90();
+        refDist = currentDist;
+        state++;
+        break;
+      case 10:
+        while((currentDist - refDist) < 457.2){  //another 1.5 ft b/c consistent error to the right
+          moveForward();
+        }
+        fullStop();  //done, yo
+        break;
       default: fullStop();
 
     }
@@ -355,50 +447,204 @@ Wall following functions
 ///////////////////////////
 */
 
+void clearOdometry()
+{
+ //plan: clear odometry a few inches before moveForward takes over again so it has fresh values
+//and the wall following will keep it straight while the odometry initializes again with new values 
+  disCurL = 0;
+  timeCurL = 0;
+  velCurL = 0;
+  accCurL = 0;
+
+  timeLastL = 0;
+  disLastL = 0;
+  velLastL = 0;
+  
+  disCurR = 0;
+  timeCurR = 0;
+  velCurR = 0;
+  accCurR = 0;
+
+  timeLastR = 0;
+  disLastR = 0;
+  velLastR = 0;
+  currentDist = 0;
+}
+
 void timeUpdate()
 {
   curTime = millis();
   if(curTime - lastTime > PINGTIME) {
     pingSide();
     delay(10);
-    pingFront();
-    
+    //pingFront();
     lastTime = curTime;
+    usedLastPing = false;
   }
 }
 
-void wallFollow()
-{
-          if(sideDiff == 0) return;
-          if(sideDiff < 0){  //cur-last < 0 means getting closer to wall, slow down left wheel
-            adjustL = map(-sideDiff, 1, 8, minAdjust, maxAdjust);   //have to adjust in_max according to PINGTIME. shorter time between pings = less possible max distance traveled
-            if(adjustL > maxAdjust)
-              adjustL = maxAdjust;  //if sideDiff > in_max, adjustL could be set very high, so cap at 30 manually
-            speedL = speedLstraight - adjustL;
-           
-            adjustR = map(-sideDiff, 1, 8, minAdjust, maxAdjust);
-            if(adjustR > maxAdjust)
-              adjustR = maxAdjust;
-            speedR = speedRstraight + adjustR;
-            
-            left.setSpeed(speedL);
-            right.setSpeed(speedR);
-          }
-          else if(sideDiff > 0){
-            adjustR = map(sideDiff, 1, 8, minAdjust, maxAdjust);  //in_max of 8 is from observational measurements
-            if(adjustR > maxAdjust)
-              adjustR = maxAdjust;
-            speedR = speedRstraight - adjustR;
-
-            adjustL = map(sideDiff, 1, 8, minAdjust, maxAdjust);
-            if(adjustL > maxAdjust)
-              adjustL = maxAdjust;
-            speedL = speedLstraight + adjustL;      
-            
-            right.setSpeed(speedR);
-            left.setSpeed(speedL);
-        }
+void PDWallFollow(){
+    if(usedLastPing == true)
+      return;  //don't do error-checking if ping data hasn't been updated since last error-correction
+    // a modification of wall follow function, which implemented a PD controller
+    sideErr = sideRef - mmSideCur;
+    if ((sideErr != 0) || (sideDiff != 0)){
+      PWM_NextR = PWM_CurR + (kp_sidePing*sideErr - kd_sidePing*sideDiff);
+      PWM_NextL = PWM_CurL - (kp_sidePing*sideErr - kd_sidePing*sideDiff);
+      
+      PWM_NextL = max(PWM_NextL, 0);  //if pwmnextL < 0, max(pwmnextL, 0) will return 0; etc for the rest
+      PWM_NextL = min(255, PWM_NextL);
+      PWM_NextR = max(PWM_NextR, 0);
+      PWM_NextR = min(255, PWM_NextR);
+      
+      right.setSpeed(PWM_NextR);
+      left.setSpeed(PWM_NextL);
+      Serial.print("current right wheel speed = ");
+      Serial.println(velCurR);
+      Serial.print("current left wheel speed = ");
+      Serial.println(velCurL);      
+    }
+    else {
+      PWM_NextR = PWM_CurR;
+      PWM_NextL = PWM_CurL;
+      
+      PWM_NextL = max(PWM_NextL, 0);  //if pwmnextL < 0, max(pwmnextL, 0) will return 0; etc for the rest
+      PWM_NextL = min(255, PWM_NextL);
+      PWM_NextR = max(PWM_NextR, 0);
+      PWM_NextR = min(255, PWM_NextR);
+      
+      right.setSpeed(PWM_NextR);
+      left.setSpeed(PWM_NextL);
+    }    
 }
+
+void turnLeft90()
+{
+ //for now, just want 90deg turns, later maybe do aribitrary turn amounts as a parameter
+ //defined RESOLUTION is degrees between interrupts
+ //defined DIAMETER is the diameter of wheel on edge of rubber
+ //ends up being ((pi*125)/4) / ((pi*76)/24) = 375/38 ~ 9.868 interrupts
+ //left wheel forward 9.868 interrupts
+ //right wheel backwards 9.868 interrupts
+ 
+ left.run(BACKWARD);
+ right.run(BACKWARD);
+ left.setSpeed(175);
+ right.setSpeed(175);
+ delay(50);
+ left.setSpeed(0);
+ right.setSpeed(0);
+ delay(500);
+ 
+ long curLcount = lcount;
+ long curRcount = rcount;
+ left.run(BACKWARD);
+ right.run(FORWARD);
+ left.setSpeed(LSTRAIGHT);
+ right.setSpeed(RSTRAIGHT);
+ while(((lcount - curLcount) <= 9) && ((rcount - curRcount) <= 9)){
+   //run left and right motors in their respective directions for 9 interrupts (~9.868 interrupts, with some random error of ending between interrupts
+ }
+ left.run(FORWARD);
+ right.run(BACKWARD);
+ left.setSpeed(175);
+ right.setSpeed(175);
+ delay(50);
+ 
+ //start moving forward again
+ long lcountcur = lcount;
+ long rcountcur = rcount;
+ left.run(FORWARD);
+ right.run(FORWARD);
+ left.setSpeed(LSTRAIGHT);
+ right.setSpeed(RSTRAIGHT);
+ while(((rcount - rcountcur) < 4) && ((lcount - lcountcur) < 4)){
+    //just wait until each wheel gets a couple of interrupts before using PDController again --> basically the same method to start the robot in setup()
+ }
+}
+
+void turnRight90()
+{
+ //for now, just want 90deg turns, later maybe do aribitrary turn amounts as a parameter
+ //defined RESOLUTION is degrees between interrupts
+ //defined DIAMETER is the diameter of wheel on edge of rubber
+ //ends up being ((pi*125)/4) / ((pi*76)/24) = 375/38 ~ 9.868 interrupts
+ //left wheel forward 9.868 interrupts
+ //right wheel backwards 9.868 interrupts
+ 
+ left.run(BACKWARD);
+ right.run(BACKWARD);
+ left.setSpeed(175);
+ right.setSpeed(175);
+ delay(50);
+ left.setSpeed(0);
+ right.setSpeed(0);
+ delay(500);
+ 
+ long curLcount = lcount;
+ long curRcount = rcount;
+ left.run(FORWARD);
+ right.run(BACKWARD);
+ left.setSpeed(LSTRAIGHT);
+ right.setSpeed(RSTRAIGHT);
+ while(((lcount - curLcount) <= 9) && ((rcount - curRcount) <= 9)){
+   //run left and right motors in their respective directions for 9 interrupts (~9.868 interrupts, with some random error of ending between interrupts
+ }
+ left.run(BACKWARD);
+ right.run(FORWARD);
+ left.setSpeed(175);
+ right.setSpeed(175);
+ delay(50);
+ 
+ //start moving forward again
+ long lcountcur = lcount;
+ long rcountcur = rcount;
+ left.run(FORWARD);
+ right.run(FORWARD);
+ left.setSpeed(LSTRAIGHT);
+ right.setSpeed(RSTRAIGHT);
+ while(((rcount - rcountcur) < 4) && ((lcount - lcountcur) < 4)){
+    //just wait until each wheel gets a couple of interrupts before using PDController again --> basically the same method to start the robot in setup()
+ }
+}
+
+void turnRight180(){
+ left.run(BACKWARD);
+ right.run(BACKWARD);
+ left.setSpeed(175);
+ right.setSpeed(175);
+ delay(50);
+ left.setSpeed(0);
+ right.setSpeed(0);
+ delay(500);
+ 
+ long curLcount = lcount;
+ long curRcount = rcount;
+ left.run(FORWARD);
+ right.run(BACKWARD);
+ left.setSpeed(LSTRAIGHT);
+ right.setSpeed(RSTRAIGHT);
+ while(((lcount - curLcount) <= 19) && ((rcount - curRcount) <= 19)){
+   //run left and right motors in their respective directions for 9 interrupts (~9.868 interrupts, with some random error of ending between interrupts
+ }
+ left.run(BACKWARD);
+ right.run(FORWARD);
+ left.setSpeed(175);
+ right.setSpeed(175);
+ delay(50);
+ 
+ //start moving forward again
+ long lcountcur = lcount;
+ long rcountcur = rcount;
+ left.run(FORWARD);
+ right.run(FORWARD);
+ left.setSpeed(LSTRAIGHT);
+ right.setSpeed(RSTRAIGHT);
+ while(((rcount - rcountcur) < 4) && ((lcount - lcountcur) < 4)){
+    //just wait until each wheel gets a couple of interrupts before using PDController again --> basically the same method to start the robot in setup()
+ }
+}
+
 
 void pingSide(){
     mmSideLast = mmSideCur;
@@ -454,7 +700,7 @@ void turnLeft(float radius)
         Serial.println(speedRatio);
 }
 
-void turnRight(float radius)
+void turnRight(float radius, float angle)
 {
         //digitalWrite(RIGHT_LED, HIGH);
         
@@ -462,8 +708,8 @@ void turnRight(float radius)
         arcRight = 0;
         speedRatio = 0;
         
-        arcRight = (radius - WIDTH/2)* PI;
-        arcLeft = (radius + WIDTH/2)* PI;
+        arcRight = (radius - WIDTH/2)* angle;
+        arcLeft = (radius + WIDTH/2)* angle;
         speedRatio = (arcRight/arcLeft);
 
         PDController (turnRightRefL,turnRightRefR,speedRatio);
@@ -516,7 +762,7 @@ void PDController(long PWM_RefL, long PWM_RefR, float speedRatio){
     PWM_CurR = PWM_NextR;
 }
 
-void stopBot()
+void stopBot(int ms)
 {
   int rcountcur;
   int lcountcur;
@@ -530,7 +776,7 @@ void stopBot()
   right.setSpeed(0);
   left.run(FORWARD);
   right.run(FORWARD);
-  delay(30000);
+  delay(ms);
   rcountcur = rcount;
   lcountcur = lcount;
   left.setSpeed(forwardRefL);  //go forward again, causing a few interrupts first before letting PDController take over again
